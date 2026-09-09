@@ -20,3 +20,7 @@ __all__ = [
     "SkillEvolution", "SkillEvolutionResult", "SkillRevision",
     "ConsolidationRecord", "MemoryConsolidator",
 ]
+
+from .system import AgentOSRuntime, SystemResult
+
+__all__ += ["AgentOSRuntime", "SystemResult"]
