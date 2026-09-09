@@ -3,6 +3,7 @@ from .metrics import MetricResult, keyword_coverage
 from .runner import EvaluationResult, EvaluationRunner
 
 __all__ = [
+    "BenchmarkCase", "BenchmarkResult", "BenchmarkRunner", "BenchmarkSummary",
     "Examination",
     "Examiner",
     "MetricResult",
@@ -10,3 +11,5 @@ __all__ = [
     "EvaluationResult",
     "EvaluationRunner",
 ]
+
+from .benchmark import BenchmarkCase, BenchmarkResult, BenchmarkRunner, BenchmarkSummary

@@ -5,6 +5,9 @@ from .audit import AuditEvent, AuditLog
 from .observability import RuntimeEvent, RuntimeMetrics
 from .executor import GraphExecutionResult, GraphExecutor
 from .replanning import ReplanDecision, Replanner
+from .closed_loop import ClosedLoopResult, ClosedLoopRunner, LoopAttempt
+from .skill_evolution import SkillEvolution, SkillEvolutionResult, SkillRevision
+from .memory_consolidation import ConsolidationRecord, MemoryConsolidator
 
 __all__ = [
     "AgentMessage", "MessageBus", "SharedState", "ExecutionLimits",
@@ -13,4 +16,7 @@ __all__ = [
     "RuntimeEvent", "RuntimeMetrics",
     "GraphExecutionResult", "GraphExecutor",
     "ReplanDecision", "Replanner",
+    "ClosedLoopResult", "ClosedLoopRunner", "LoopAttempt",
+    "SkillEvolution", "SkillEvolutionResult", "SkillRevision",
+    "ConsolidationRecord", "MemoryConsolidator",
 ]
