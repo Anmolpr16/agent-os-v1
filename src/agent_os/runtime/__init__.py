@@ -23,4 +23,6 @@ __all__ = [
 
 from .system import AgentOSRuntime, SystemResult
 
-__all__ += ["AgentOSRuntime", "SystemResult"]
+__all__ += ["AgentOSRuntime", "SystemResult", "RecoveryController", "RecoveryResult", "RuntimePolicy"]
+from .recovery import RecoveryController, RecoveryResult
+from .policy import RuntimePolicy
