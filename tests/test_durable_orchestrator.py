@@ -38,3 +38,69 @@ def test_orchestrator_persists_lifecycle_events():
 
     assert persisted[0]["task_id"] == task.id
     assert persisted[-1]["state"] == "complete"
+
+
+def test_orchestrator_fails_on_tool_failure():
+    from agent_os.agents import Agent
+    from agent_os.providers import MockProvider
+    from agent_os.tools import (
+        PermissionPolicy,
+        ToolExecutor,
+        ToolRegistry,
+    )
+
+    memory = MemoryStore(":memory:")
+    repository = RunRepository(memory.conn)
+
+    registry = ToolRegistry()
+    registry.register(
+        name="restricted",
+        description="Restricted operation.",
+        handler=lambda: "should not run",
+    )
+
+    executor = ToolExecutor(
+        registry,
+        PermissionPolicy(allowed_tools=set()),
+    )
+
+    agent = Agent(
+        MockProvider(response="done"),
+        executor,
+    )
+
+    orchestrator = Orchestrator(
+        memory=memory,
+        agent=agent,
+        run_repository=repository,
+    )
+
+    task = Task(
+        id="failure-001",
+        objective="Use restricted tool",
+        metadata={
+            "tool_calls": [
+                {
+                    "name": "restricted",
+                    "arguments": {},
+                }
+            ]
+        },
+    )
+
+    run = orchestrator.run(task)
+
+    assert run.state == State.FAILED
+    assert run.error == (
+        "tool_execution_failed:restricted"
+    )
+
+    assert "finalization" not in [
+        event["state"]
+        for event in run.events
+    ]
+
+    persisted = repository.list_events(task.id)
+
+    assert persisted[-1]["state"] == "failed"
+    assert persisted[-1]["event"]["error"] == run.error

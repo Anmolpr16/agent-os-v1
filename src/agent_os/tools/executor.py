@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+from agent_os.core.failures import classify_error
+from agent_os.core.recovery import RetryPolicy, retry
 from typing import Any
 
 from .permissions import PermissionPolicy
@@ -28,9 +31,11 @@ class ToolExecutor:
         self,
         registry: ToolRegistry,
         permissions: PermissionPolicy,
+        retry_policy: RetryPolicy | None = None,
     ):
         self.registry = registry
         self.permissions = permissions
+        self.retry_policy = retry_policy or RetryPolicy(max_attempts=1)
 
     def execute(
         self,
@@ -47,7 +52,17 @@ class ToolExecutor:
             self.permissions.require(tool_name)
             tool = self.registry.get(tool_name)
 
-            output = tool.handler(**kwargs)
+            def operation():
+                return tool.handler(**kwargs)
+
+            output = retry(
+                operation,
+                self.retry_policy,
+                retryable_errors=(
+                    TimeoutError,
+                    ConnectionError,
+                ),
+            )
 
             return ToolExecutionResult(
                 tool_name=tool_name,

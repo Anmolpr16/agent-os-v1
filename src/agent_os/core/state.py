@@ -10,6 +10,7 @@ class State(str, Enum):
     FINALIZATION = "finalization"
     MEMORY_CONSOLIDATION = "memory_consolidation"
     COMPLETE = "complete"
+    FAILED = "failed"
 
 
 DEFAULT_ORDER = [

@@ -115,3 +115,69 @@ def test_audit_log():
     assert len(audit.entries) == 1
     assert audit.last()["tool_name"] == "echo"
     assert audit.last()["success"] is True
+
+
+def test_tool_executor_retries_recoverable_failure():
+    from agent_os.core import RetryPolicy
+
+    attempts = []
+
+    def unstable():
+        attempts.append(1)
+
+        if len(attempts) == 1:
+            raise TimeoutError("temporary")
+
+        return "success"
+
+    registry = ToolRegistry()
+    registry.register(
+        name="unstable",
+        description="Transiently failing tool.",
+        handler=unstable,
+    )
+
+    executor = ToolExecutor(
+        registry,
+        PermissionPolicy(
+            allowed_tools={"unstable"}
+        ),
+        RetryPolicy(max_attempts=3),
+    )
+
+    result = executor.execute("unstable")
+
+    assert result.success
+    assert result.output == "success"
+    assert len(attempts) == 2
+
+
+def test_tool_executor_does_not_retry_terminal_failure():
+    from agent_os.core import RetryPolicy
+
+    attempts = []
+
+    def restricted():
+        attempts.append(1)
+        raise ValueError("invalid input")
+
+    registry = ToolRegistry()
+    registry.register(
+        name="invalid",
+        description="Terminal failure.",
+        handler=restricted,
+    )
+
+    executor = ToolExecutor(
+        registry,
+        PermissionPolicy(
+            allowed_tools={"invalid"}
+        ),
+        RetryPolicy(max_attempts=3),
+    )
+
+    result = executor.execute("invalid")
+
+    assert not result.success
+    assert result.error == "ValueError: invalid input"
+    assert len(attempts) == 1

@@ -36,6 +36,7 @@ class Run:
     reflection: Reflection | None = None
     output: str | None = None
     evaluation_score: float | None = None
+    error: str | None = None
 
 
 class Orchestrator:
@@ -172,6 +173,26 @@ class Orchestrator:
                     error.magnitude
                 )
 
+                tool_calls = agent_result.metadata.get(
+                    "tool_calls",
+                    [],
+                )
+
+                failed_tools = [
+                    call
+                    for call in tool_calls
+                    if not call.get("success", False)
+                ]
+
+                if failed_tools:
+                    run.error = (
+                        "tool_execution_failed:"
+                        + failed_tools[0]["tool_name"]
+                    )
+
+                    event["tool_failures"] = failed_tools
+                    event["error"] = run.error
+
             elif state == State.VERIFICATION:
                 result = self.verifier.verify(
                     run.output,
@@ -184,6 +205,14 @@ class Orchestrator:
                     "criterion": result.criterion,
                     "details": result.details,
                 }
+
+                if not result.passed:
+                    run.error = (
+                        "verification_failed:"
+                        + result.criterion
+                    )
+
+                    event["error"] = run.error
 
             elif state == State.FINALIZATION:
                 evaluation = (
@@ -247,11 +276,37 @@ class Orchestrator:
 
                     event["memory_id"] = memory_id
 
+            if run.error is not None:
+                run.state = State.FAILED
+                failure_event = {
+                    "state": State.FAILED.value,
+                    "task_id": task.id,
+                    "error": run.error,
+                }
+
+                run.events.append(event)
+                self.run_repository.record(
+                    task_id=task.id,
+                    state=state.value,
+                    event=event,
+                )
+
+                run.events.append(failure_event)
+                self.run_repository.record(
+                    task_id=task.id,
+                    state=State.FAILED.value,
+                    event=failure_event,
+                )
+                break
+
             run.events.append(event)
             self.run_repository.record(
                 task_id=task.id,
                 state=state.value,
                 event=event,
             )
+
+        if run.state != State.FAILED and run.error is not None:
+            run.state = State.FAILED
 
         return run
