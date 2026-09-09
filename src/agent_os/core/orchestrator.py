@@ -4,6 +4,7 @@ from typing import Any
 from agent_os.agents import Agent, AgentContext
 from agent_os.evaluation import EvaluationRunner
 from agent_os.memory import MemoryRetriever, MemoryStore
+from agent_os.observability import RunRepository
 from agent_os.providers import MockProvider
 from agent_os.tools import (
     PermissionPolicy,
@@ -48,6 +49,7 @@ class Orchestrator:
         agent: Agent | None = None,
         evaluation: EvaluationRunner | None = None,
         tools: ToolExecutor | None = None,
+        run_repository: RunRepository | None = None,
     ):
         self.memory = memory or MemoryStore(":memory:")
 
@@ -69,6 +71,9 @@ class Orchestrator:
         )
 
         self.tools = tools
+        self.run_repository = run_repository or RunRepository(
+            self.memory.conn
+        )
 
     def run(self, task: Task) -> Run:
         run = Run(
@@ -243,5 +248,10 @@ class Orchestrator:
                     event["memory_id"] = memory_id
 
             run.events.append(event)
+            self.run_repository.record(
+                task_id=task.id,
+                state=state.value,
+                event=event,
+            )
 
         return run

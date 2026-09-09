@@ -43,9 +43,46 @@ class Agent:
             )
         )
 
+        metadata = {
+            **(response.metadata or {}),
+        }
+
+        tool_results = []
+
+        for request in context.metadata.get(
+            "tool_calls",
+            [],
+        ):
+            if self.tool_executor is None:
+                tool_results.append(
+                    {
+                        "tool_name": request["name"],
+                        "success": False,
+                        "output": None,
+                        "error": "tool_executor_unavailable",
+                    }
+                )
+                continue
+
+            result = self.tool_executor.execute(
+                request["name"],
+                **request.get("arguments", {}),
+            )
+
+            tool_results.append(
+                {
+                    "tool_name": result.tool_name,
+                    "success": result.success,
+                    "output": result.output,
+                    "error": result.error,
+                }
+            )
+
+        metadata["tool_calls"] = tool_results
+
         return AgentResult(
             output=response.text,
             provider=response.provider,
             model=response.model,
-            metadata=response.metadata or {},
+            metadata=metadata,
         )
