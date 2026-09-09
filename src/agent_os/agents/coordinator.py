@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from .delegation import DelegatedResult, DelegatedTask
@@ -24,14 +25,35 @@ class AgentCoordinator:
         agent_name: str,
         tasks: list[DelegatedTask],
         stop_on_failure: bool = False,
+        parallel: bool = False,
+        max_workers: int | None = None,
     ) -> CoordinationResult:
-        results: list[DelegatedResult] = []
+        if parallel and stop_on_failure:
+            raise ValueError(
+                "stop_on_failure_not_supported_in_parallel_mode"
+            )
 
-        for task in tasks:
-            result = self.manager.delegate(agent_name, task)
-            results.append(result)
+        if not parallel:
+            results: list[DelegatedResult] = []
 
-            if stop_on_failure and not result.success:
-                break
+            for task in tasks:
+                result = self.manager.delegate(agent_name, task)
+                results.append(result)
+
+                if stop_on_failure and not result.success:
+                    break
+
+            return CoordinationResult(results=results)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(
+                executor.map(
+                    lambda task: self.manager.delegate(
+                        agent_name,
+                        task,
+                    ),
+                    tasks,
+                )
+            )
 
         return CoordinationResult(results=results)

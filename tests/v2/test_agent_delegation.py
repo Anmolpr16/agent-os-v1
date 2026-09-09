@@ -187,3 +187,55 @@ def test_coordinator_continues_by_default():
         "task-1",
         "task-2",
     ]
+
+
+def test_coordinator_supports_parallel_execution():
+    from agent_os.agents import Agent, AgentCoordinator, AgentManager
+    from agent_os.providers import MockProvider
+
+    manager = AgentManager()
+    manager.register(
+        "worker",
+        Agent(MockProvider(response="parallel done")),
+    )
+
+    result = AgentCoordinator(manager).run(
+        "worker",
+        [
+            DelegatedTask("task-1", "first"),
+            DelegatedTask("task-2", "second"),
+            DelegatedTask("task-3", "third"),
+        ],
+        parallel=True,
+        max_workers=2,
+    )
+
+    assert result.success is True
+    assert [item.task_id for item in result.results] == [
+        "task-1",
+        "task-2",
+        "task-3",
+    ]
+    assert [item.output for item in result.results] == [
+        "parallel done",
+        "parallel done",
+        "parallel done",
+    ]
+
+
+def test_parallel_mode_rejects_stop_on_failure():
+    from agent_os.agents import AgentCoordinator, AgentManager
+
+    try:
+        AgentCoordinator(AgentManager()).run(
+            "worker",
+            [DelegatedTask("task-1", "first")],
+            stop_on_failure=True,
+            parallel=True,
+        )
+    except ValueError as exc:
+        assert str(exc) == (
+            "stop_on_failure_not_supported_in_parallel_mode"
+        )
+    else:
+        raise AssertionError("expected ValueError")
