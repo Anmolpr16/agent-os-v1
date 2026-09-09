@@ -198,3 +198,25 @@ def test_orchestrator_uses_runtime_config_for_default_provider():
 
     assert execution_event["provider"] == "configured-provider"
     assert execution_event["model"] == "configured-model"
+
+
+def test_orchestrator_uses_configured_memory_path(tmp_path):
+    from agent_os.config import RuntimeConfig
+    from agent_os.core.orchestrator import Orchestrator
+
+    db_path = tmp_path / "runtime.db"
+    config = RuntimeConfig(memory_path=str(db_path))
+
+    first = Orchestrator(config=config)
+    first.memory.add_memory(
+        content="configured persistent memory",
+        kind="semantic",
+    )
+    first.memory.close()
+
+    second = Orchestrator(config=config)
+    matches = second.retriever.search("configured persistent memory")
+
+    assert matches
+    assert matches[0].content == "configured persistent memory"
+    second.memory.close()
