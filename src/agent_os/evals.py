@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from agent_os.evaluation.metrics import keyword_coverage
+
 
 @dataclass
 class EvalCase:
@@ -35,18 +37,18 @@ def evaluate(
     output: str,
     case: EvalCase,
 ) -> EvalResult:
-    text = output.lower()
+    metric = keyword_coverage(
+        output,
+        case.expected_keywords,
+    )
 
     missing = [
         keyword
         for keyword in case.expected_keywords
-        if keyword.lower() not in text
+        if keyword.lower() not in output.lower()
     ]
 
-    score = 1.0 - (
-        len(missing) /
-        max(1, len(case.expected_keywords))
-    )
+    score = metric.score
 
     return EvalResult(
         case_id=case.id,
