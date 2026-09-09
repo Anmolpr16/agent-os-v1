@@ -239,3 +239,35 @@ def test_parallel_mode_rejects_stop_on_failure():
         )
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_coordinator_routes_tasks_to_specific_agents():
+    from agent_os.agents import Agent, AgentCoordinator, AgentManager
+    from agent_os.providers import MockProvider
+
+    manager = AgentManager()
+    manager.register(
+        "researcher",
+        Agent(MockProvider(response="research result")),
+    )
+    manager.register(
+        "writer",
+        Agent(MockProvider(response="writing result")),
+    )
+
+    result = AgentCoordinator(manager).run_routed(
+        [
+            ("researcher", DelegatedTask("task-1", "research")),
+            ("writer", DelegatedTask("task-2", "write")),
+        ]
+    )
+
+    assert result.success is True
+    assert [item.task_id for item in result.results] == [
+        "task-1",
+        "task-2",
+    ]
+    assert [item.output for item in result.results] == [
+        "research result",
+        "writing result",
+    ]

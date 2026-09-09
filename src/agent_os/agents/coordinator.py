@@ -57,3 +57,32 @@ class AgentCoordinator:
             )
 
         return CoordinationResult(results=results)
+
+    def run_routed(
+        self,
+        tasks: list[tuple[str, DelegatedTask]],
+        parallel: bool = False,
+        max_workers: int | None = None,
+    ) -> CoordinationResult:
+        """Execute tasks using an explicit agent for each task."""
+
+        if not parallel:
+            return CoordinationResult(
+                results=[
+                    self.manager.delegate(agent_name, task)
+                    for agent_name, task in tasks
+                ]
+            )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(
+                executor.map(
+                    lambda item: self.manager.delegate(
+                        item[0],
+                        item[1],
+                    ),
+                    tasks,
+                )
+            )
+
+        return CoordinationResult(results=results)
