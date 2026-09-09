@@ -107,3 +107,49 @@ def test_manager_rejects_invalid_delegated_task():
 
     assert missing_task_id.error == "task_id_missing"
     assert missing_objective.error == "objective_missing"
+
+
+def test_coordinator_runs_multiple_tasks():
+    from agent_os.agents import Agent, AgentCoordinator, AgentManager
+    from agent_os.providers import MockProvider
+
+    manager = AgentManager()
+    manager.register(
+        "worker",
+        Agent(MockProvider(response="done")),
+    )
+
+    coordinator = AgentCoordinator(manager)
+    result = coordinator.run(
+        "worker",
+        [
+            DelegatedTask("task-1", "first"),
+            DelegatedTask("task-2", "second"),
+            DelegatedTask("task-3", "third"),
+        ],
+    )
+
+    assert result.success is True
+    assert [item.task_id for item in result.results] == [
+        "task-1",
+        "task-2",
+        "task-3",
+    ]
+    assert [item.output for item in result.results] == [
+        "done",
+        "done",
+        "done",
+    ]
+
+
+def test_coordinator_preserves_failed_tasks():
+    from agent_os.agents import AgentCoordinator, AgentManager
+
+    result = AgentCoordinator(AgentManager()).run(
+        "missing",
+        [DelegatedTask("task-1", "first")],
+    )
+
+    assert result.success is False
+    assert len(result.results) == 1
+    assert result.results[0].success is False
