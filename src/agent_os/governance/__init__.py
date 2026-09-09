@@ -13,3 +13,7 @@ __all__ = [
     "ApprovalStatus",
     "AutomaticApproval",
 ]
+
+from .pipeline import GovernancePipeline, GovernanceResult
+
+__all__ += ["GovernancePipeline", "GovernanceResult"]
