@@ -44,11 +44,14 @@ def test_tool_registry_and_executor():
         permissions,
     )
 
-    assert executor.execute(
+    result = executor.execute(
         "add",
         a=2,
         b=3,
-    ) == 5
+    )
+
+    assert result.success
+    assert result.output == 5
 
 
 def test_unpermitted_tool_is_blocked():
@@ -65,14 +68,13 @@ def test_unpermitted_tool_is_blocked():
         PermissionPolicy(),
     )
 
-    try:
-        executor.execute("secret")
-    except PermissionError as exc:
-        assert str(exc) == "tool_not_permitted:secret"
-    else:
-        raise AssertionError(
-            "unpermitted tool executed"
-        )
+    result = executor.execute("secret")
+
+    assert not result.success
+    assert result.error == (
+        "PermissionError: "
+        "tool_not_permitted:secret"
+    )
 
 
 def test_unknown_tool_is_blocked():
@@ -85,13 +87,10 @@ def test_unknown_tool_is_blocked():
         ),
     )
 
-    try:
-        executor.execute("missing")
-    except KeyError as exc:
-        assert str(exc) == (
-            "'tool_not_registered:missing'"
-        )
-    else:
-        raise AssertionError(
-            "unknown tool executed"
-        )
+    result = executor.execute("missing")
+
+    assert not result.success
+    assert result.error == (
+        "KeyError: "
+        "'tool_not_registered:missing'"
+    )
