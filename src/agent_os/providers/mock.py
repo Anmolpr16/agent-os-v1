@@ -6,10 +6,12 @@ class MockProvider(Provider):
 
     def __init__(
         self,
-        response: str = "mock response",
+        response: str = "task completed",
+        provider: str = "mock",
         model: str = "mock-v1",
     ):
         self.response = response
+        self.provider = provider
         self.model = model
 
     def generate(
@@ -18,9 +20,7 @@ class MockProvider(Provider):
     ) -> ProviderResponse:
         return ProviderResponse(
             text=self.response,
-            provider="mock",
+            provider=self.provider,
             model=self.model,
-            metadata={
-                "prompt_length": len(request.prompt),
-            },
+            metadata={"prompt_length": len(request.prompt)},
         )

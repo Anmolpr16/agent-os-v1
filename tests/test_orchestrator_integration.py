@@ -171,3 +171,30 @@ def test_orchestrator_records_skill_procedure_runtime():
         "acknowledged",
         "acknowledged",
     ]
+
+
+def test_orchestrator_uses_runtime_config_for_default_provider():
+    from agent_os.config import RuntimeConfig
+    from agent_os.core.orchestrator import Orchestrator
+
+    orchestrator = Orchestrator(
+        config=RuntimeConfig(
+            provider_response="configured response",
+            provider_name="configured-provider",
+            provider_model="configured-model",
+        )
+    )
+
+    from agent_os.core.orchestrator import Task
+
+    task = Task(id="config-task", objective="configured task")
+    result = orchestrator.run(task)
+
+    assert result.output == "configured response"
+    execution_event = next(
+        event for event in result.events
+        if event["state"] == "execution"
+    )
+
+    assert execution_event["provider"] == "configured-provider"
+    assert execution_event["model"] == "configured-model"

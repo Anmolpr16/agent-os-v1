@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agent_os.agents import Agent, AgentContext
+from agent_os.config import RuntimeConfig
 from agent_os.evaluation import EvaluationRunner
 from agent_os.memory import MemoryRetriever, MemoryStore
 from agent_os.observability import RunRepository
@@ -52,13 +53,15 @@ class Orchestrator:
     def __init__(
         self,
         memory: MemoryStore | None = None,
+        config: RuntimeConfig | None = None,
         agent: Agent | None = None,
         evaluation: EvaluationRunner | None = None,
         tools: ToolExecutor | None = None,
         run_repository: RunRepository | None = None,
         skill_registry: SkillRegistry | None = None,
     ):
-        self.memory = memory or MemoryStore(":memory:")
+        self.config = config or RuntimeConfig()
+        self.memory = memory or MemoryStore(self.config.memory_path)
 
         self.retriever = MemoryRetriever(
             self.memory
@@ -72,7 +75,9 @@ class Orchestrator:
 
         self.agent = agent or Agent(
             MockProvider(
-                response="task completed",
+                response=self.config.provider_response,
+                provider=self.config.provider_name,
+                model=self.config.provider_model,
             ),
             tools,
         )
