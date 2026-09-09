@@ -8,5 +8,14 @@ class RuntimeConfig:
     provider_name: str = "mock"
     provider_model: str = "mock-v1"
 
+    def __post_init__(self) -> None:
+        for field_name in (
+            "provider_name",
+            "provider_model",
+            "provider_response",
+        ):
+            if not getattr(self, field_name).strip():
+                raise ValueError(f"{field_name} must not be empty")
+
 
 __all__ = ["RuntimeConfig"]
