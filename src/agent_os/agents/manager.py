@@ -1,4 +1,5 @@
-from .base import Agent
+from .base import Agent, AgentContext
+from .delegation import DelegatedResult, DelegatedTask
 
 
 class AgentManager:
@@ -28,3 +29,57 @@ class AgentManager:
 
     def list(self) -> list[str]:
         return sorted(self._agents)
+
+    def delegate(
+        self,
+        agent_name: str,
+        task: DelegatedTask,
+    ) -> DelegatedResult:
+        if not agent_name.strip():
+            return DelegatedResult(
+                task_id=task.task_id,
+                success=False,
+                error="agent_name_missing",
+            )
+
+        if not task.task_id.strip():
+            return DelegatedResult(
+                task_id=task.task_id,
+                success=False,
+                error="task_id_missing",
+            )
+
+        if not task.objective.strip():
+            return DelegatedResult(
+                task_id=task.task_id,
+                success=False,
+                error="objective_missing",
+            )
+
+        try:
+            agent = self.get(agent_name)
+            result = agent.run(
+                AgentContext(
+                    task_id=task.task_id,
+                    objective=task.objective,
+                    metadata=task.metadata,
+                )
+            )
+        except KeyError:
+            return DelegatedResult(
+                task_id=task.task_id,
+                success=False,
+                error=f"agent_not_registered:{agent_name}",
+            )
+        except Exception as exc:
+            return DelegatedResult(
+                task_id=task.task_id,
+                success=False,
+                error=str(exc),
+            )
+
+        return DelegatedResult(
+            task_id=task.task_id,
+            success=True,
+            output=result.output,
+        )
