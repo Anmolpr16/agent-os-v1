@@ -113,3 +113,59 @@ def test_skill_selector_handles_empty_objective():
 
     assert selection is not None
     assert selection.score == 0.0
+
+
+def test_skill_runner_tracks_procedure_steps():
+    from agent_os.skill_runtime import (
+        Skill,
+        SkillRunner,
+    )
+
+    skill = Skill(
+        name="research",
+        version="1.0.0",
+        objective="Produce an evidence-backed answer.",
+        procedure=[
+            "Gather evidence.",
+            "Check contradictions.",
+            "Verify the final answer.",
+        ],
+    )
+
+    result = SkillRunner().run(skill)
+
+    assert result.skill_name == "research"
+    assert result.skill_version == "1.0.0"
+    assert result.status == "completed"
+    assert result.passed
+    assert [step.index for step in result.steps] == [1, 2, 3]
+    assert all(
+        step.status == "acknowledged"
+        for step in result.steps
+    )
+
+
+def test_skill_runner_rejects_empty_procedure_step():
+    from agent_os.skill_runtime import (
+        Skill,
+        SkillRunner,
+    )
+
+    skill = Skill(
+        name="research",
+        version="1.0.0",
+        objective="Research.",
+        procedure=[
+            "Gather evidence.",
+            "",
+            "Verify.",
+        ],
+    )
+
+    result = SkillRunner().run(skill)
+
+    assert result.status == "failed"
+    assert not result.passed
+    assert result.steps[-1].error == "empty_procedure_step"
+    assert result.steps[-1].status == "failed"
+    assert len(result.steps) == 2

@@ -5,7 +5,11 @@ from agent_os.agents import Agent, AgentContext
 from agent_os.evaluation import EvaluationRunner
 from agent_os.memory import MemoryRetriever, MemoryStore
 from agent_os.observability import RunRepository
-from agent_os.skill_runtime import SkillRegistry, SkillSelector
+from agent_os.skill_runtime import (
+    SkillRegistry,
+    SkillRunner,
+    SkillSelector,
+)
 from agent_os.providers import MockProvider
 from agent_os.tools import (
     PermissionPolicy,
@@ -84,6 +88,7 @@ class Orchestrator:
         self.skill_selector = SkillSelector(
             self.skill_registry
         )
+        self.skill_runner = SkillRunner()
 
     def run(self, task: Task) -> Run:
         run = Run(
@@ -128,6 +133,26 @@ class Orchestrator:
                 selected_skill = self.skill_selector.select(
                     task.objective
                 )
+
+                if selected_skill is not None:
+                    skill_run = self.skill_runner.run(
+                        selected_skill.skill
+                    )
+
+                    event["skill_runtime"] = {
+                        "name": skill_run.skill_name,
+                        "version": skill_run.skill_version,
+                        "status": skill_run.status,
+                        "steps": [
+                            {
+                                "index": step.index,
+                                "description": step.description,
+                                "status": step.status,
+                                "error": step.error,
+                            }
+                            for step in skill_run.steps
+                        ],
+                    }
 
                 event["plan"] = {
                     "objective": run.plan.objective,

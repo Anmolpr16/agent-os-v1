@@ -157,3 +157,62 @@ def test_orchestrator_persists_selected_skill():
     assert planning_event["event"]["plan"]["skill_score"] > 0.0
 
     memory.close()
+
+
+def test_orchestrator_persists_skill_procedure_runtime():
+    from agent_os.agents import Agent
+    from agent_os.core.orchestrator import Orchestrator, Task
+    from agent_os.observability import RunRepository
+    from agent_os.providers import MockProvider
+    from agent_os.skill_runtime import Skill, SkillRegistry
+
+    memory = MemoryStore(":memory:")
+    repository = RunRepository(memory.conn)
+
+    registry = SkillRegistry()
+    registry.register(
+        Skill(
+            name="research",
+            version="1.0.0",
+            objective="research evidence verification",
+            procedure=[
+                "Gather evidence.",
+                "Verify evidence.",
+            ],
+        )
+    )
+
+    orchestrator = Orchestrator(
+        memory=memory,
+        agent=Agent(
+            MockProvider(response="task completed")
+        ),
+        run_repository=repository,
+        skill_registry=registry,
+    )
+
+    task_id = "durable-skill-runtime-001"
+
+    orchestrator.run(
+        Task(
+            id=task_id,
+            objective="research evidence verification",
+        )
+    )
+
+    events = repository.list_events(task_id)
+
+    planning_event = next(
+        event
+        for event in events
+        if event["state"] == "planning"
+    )
+
+    runtime = planning_event["event"]["skill_runtime"]
+
+    assert runtime["name"] == "research"
+    assert runtime["version"] == "1.0.0"
+    assert runtime["status"] == "completed"
+    assert [step["index"] for step in runtime["steps"]] == [1, 2]
+
+    memory.close()

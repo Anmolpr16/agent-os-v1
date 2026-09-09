@@ -126,3 +126,48 @@ def test_orchestrator_passes_selected_skill_to_agent():
         "Gather evidence.",
         "Verify evidence.",
     ]
+
+
+def test_orchestrator_records_skill_procedure_runtime():
+    from agent_os.core.orchestrator import Orchestrator, Task
+    from agent_os.skill_runtime import Skill, SkillRegistry
+
+    registry = SkillRegistry()
+    registry.register(
+        Skill(
+            name="research",
+            version="1.0.0",
+            objective="research evidence verification",
+            procedure=[
+                "Gather evidence.",
+                "Verify evidence.",
+            ],
+        )
+    )
+
+    orchestrator = Orchestrator(
+        skill_registry=registry,
+    )
+
+    run = orchestrator.run(
+        Task(
+            id="skill-runtime-001",
+            objective="research evidence verification",
+        )
+    )
+
+    planning_event = next(
+        event
+        for event in run.events
+        if event["state"] == "planning"
+    )
+
+    runtime = planning_event["skill_runtime"]
+
+    assert runtime["name"] == "research"
+    assert runtime["version"] == "1.0.0"
+    assert runtime["status"] == "completed"
+    assert [step["status"] for step in runtime["steps"]] == [
+        "acknowledged",
+        "acknowledged",
+    ]
