@@ -1,0 +1,3 @@
+{"id":"research-001","prompt":"Design a research workflow for a technical question","expected_keywords":["evidence","verification","plan"]}
+{"id":"research-002","prompt":"Explain why provenance matters in an agent memory system","expected_keywords":["provenance","source","verification"]}
+{"id":"research-003","prompt":"How should an agent handle conflicting evidence?","expected_keywords":["contradiction","evidence","uncertainty"]}
