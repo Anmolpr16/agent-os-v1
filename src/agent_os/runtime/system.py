@@ -8,6 +8,8 @@ from .dag import TaskGraph, TaskNode
 from .executor import GraphExecutionResult, GraphExecutor
 from .limits import ExecutionLimits
 from .lifecycle import RuntimeLifecycle, check_runtime
+from ..memory_graph_store import PersistentMemoryGraph
+from ..memory_context import MemoryContextBuilder
 from .memory_consolidation import MemoryConsolidator
 from .observability import RuntimeMetrics
 from .replanning import Replanner
@@ -35,6 +37,7 @@ class AgentOSRuntime:
         replanner: Replanner | None = None,
         approval=None,
         evaluation=None,
+        memory_graph=None,
     ):
         self.agent = agent
         self.memory = memory
@@ -45,6 +48,8 @@ class AgentOSRuntime:
         self.metrics = metrics or RuntimeMetrics()
         self.replanner = replanner or Replanner()
         self.lifecycle = RuntimeLifecycle()
+        self.memory_graph = memory_graph or PersistentMemoryGraph()
+        self.memory_context = MemoryContextBuilder(self.memory_graph)
         self.approval = approval
         self.evaluation = evaluation
 
@@ -88,7 +93,11 @@ class AgentOSRuntime:
         self.audit.record("closed_loop_started", "runtime", task_id)
         self.lifecycle.emit("closed_loop_started", task_id)
         result = loop.run(
-            AgentContext(task_id=task_id, objective=objective),
+            AgentContext(
+                task_id=task_id,
+                objective=objective,
+                metadata=self.memory_context.build(objective),
+            ),
             required_keywords,
         )
         self.audit.record(
