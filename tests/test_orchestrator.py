@@ -1,4 +1,4 @@
-from agent_os.orchestrator import Orchestrator, Task, State
+from agent_os.core.orchestrator import Orchestrator, Task, State
 
 
 def test_lifecycle():

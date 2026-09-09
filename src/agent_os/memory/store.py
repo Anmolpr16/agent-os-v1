@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 SCHEMA = (
-    Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[3]
     / "memory"
     / "schema.sql"
 )
