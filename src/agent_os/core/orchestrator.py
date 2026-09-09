@@ -5,6 +5,7 @@ from agent_os.agents import Agent, AgentContext
 from agent_os.config import RuntimeConfig
 from agent_os.evaluation import EvaluationRunner
 from agent_os.memory import MemoryRetriever, MemoryStore
+from agent_os.storage import Database
 from agent_os.observability import RunRepository
 from agent_os.skill_runtime import (
     SkillRegistry,
@@ -55,6 +56,7 @@ class Orchestrator:
         self,
         memory: MemoryStore | None = None,
         config: RuntimeConfig | None = None,
+        database: Database | None = None,
         agent: Agent | None = None,
         evaluation: EvaluationRunner | None = None,
         tools: ToolExecutor | None = None,
@@ -62,7 +64,22 @@ class Orchestrator:
         skill_registry: SkillRegistry | None = None,
     ):
         self.config = config or RuntimeConfig()
-        self.memory = memory or MemoryStore(self.config.memory_path)
+
+        if memory is not None and database is not None:
+            raise ValueError(
+                "provide either memory or database, not both"
+            )
+
+        if memory is not None:
+            self.memory = memory
+            self.database = None
+        else:
+            self.database = database or Database(
+                self.config.memory_path
+            )
+            self.memory = MemoryStore(
+                database=self.database
+            )
 
         self.retriever = MemoryRetriever(
             self.memory
@@ -84,9 +101,17 @@ class Orchestrator:
         )
 
         self.tools = tools
-        self.run_repository = run_repository or RunRepository(
-            self.memory.conn
-        )
+
+        if run_repository is not None:
+            self.run_repository = run_repository
+        elif self.database is not None:
+            self.run_repository = RunRepository(
+                database=self.database
+            )
+        else:
+            self.run_repository = RunRepository(
+                self.memory.conn
+            )
 
         self.skill_registry = (
             skill_registry or SkillRegistry()

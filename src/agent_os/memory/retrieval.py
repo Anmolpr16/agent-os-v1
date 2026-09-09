@@ -78,3 +78,49 @@ class MemoryRetriever:
         )
 
         return matches[:limit]
+
+    def search_entity_graph(
+        self,
+        entity_id: int,
+        depth: int = 1,
+        limit: int = 50,
+    ) -> list[dict]:
+        if depth <= 0 or limit <= 0:
+            return []
+
+        visited = {entity_id}
+        frontier = [entity_id]
+        results = []
+
+        for _ in range(depth):
+            next_frontier = []
+
+            for current_id in frontier:
+                for neighbor in self.store.get_neighbors(
+                    current_id,
+                    limit=limit,
+                ):
+                    neighbor_id = neighbor["entity_id"]
+
+                    if neighbor_id in visited:
+                        continue
+
+                    visited.add(neighbor_id)
+                    next_frontier.append(neighbor_id)
+
+                    results.append(
+                        {
+                            **neighbor,
+                            "depth": _ + 1,
+                        }
+                    )
+
+                    if len(results) >= limit:
+                        return results
+
+            frontier = next_frontier
+
+            if not frontier:
+                break
+
+        return results

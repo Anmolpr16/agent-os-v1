@@ -3,12 +3,28 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+from agent_os.storage import Database
+
 
 class RunRepository:
     """Persist complete agent run records in SQLite."""
 
-    def __init__(self, connection: sqlite3.Connection):
-        self.conn = connection
+    def __init__(
+        self,
+        connection: sqlite3.Connection | None = None,
+        database: Database | None = None,
+    ):
+        if connection is None and database is None:
+            raise ValueError("connection or database required")
+        if connection is not None and database is not None:
+            raise ValueError("provide either connection or database, not both")
+
+        self.database = database
+        self.conn = (
+            database.conn
+            if database is not None
+            else connection
+        )
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS run_events (
