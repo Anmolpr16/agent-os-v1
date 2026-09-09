@@ -1,3 +1,4 @@
+from agent_os.core.state import State
 from agent_os.core.orchestrator import (
     Orchestrator,
     Task,
@@ -220,3 +221,34 @@ def test_orchestrator_uses_configured_memory_path(tmp_path):
     assert matches
     assert matches[0].content == "configured persistent memory"
     second.memory.close()
+
+
+def test_orchestrator_converts_unexpected_agent_error_to_failed_run():
+    class FailingAgent:
+        def run(self, context):
+            raise RuntimeError("unexpected agent failure")
+
+    memory = MemoryStore(":memory:")
+    orchestrator = Orchestrator(
+        memory=memory,
+        agent=FailingAgent(),
+    )
+
+    run = orchestrator.run(
+        Task(
+            id="failure-001",
+            objective="trigger an unexpected agent failure",
+        )
+    )
+
+    assert run.state == State.FAILED
+    assert run.error == "runtimeerror:unexpected agent failure"
+
+    failure_event = run.events[-1]
+    assert failure_event["state"] == "failed"
+    assert failure_event["error"] == run.error
+
+    persisted = orchestrator.run_repository.list_events("failure-001")
+    assert persisted[-1]["state"] == "failed"
+
+    memory.close()

@@ -23,6 +23,7 @@ from ..cognition.planner import Plan, Planner
 from ..cognition.predictor import Prediction, compare
 from ..cognition.reflection import Reflection, reflect
 from ..cognition.verifier import Verifier
+from ..core.failures import classify_error
 
 
 @dataclass
@@ -94,6 +95,15 @@ class Orchestrator:
             self.skill_registry
         )
         self.skill_runner = SkillRunner()
+
+    def _run_agent_safely(
+        self,
+        context: AgentContext,
+    ):
+        try:
+            return self.agent.run(context), None
+        except Exception as exc:
+            return None, classify_error(exc)
 
     def run(self, task: Task) -> Run:
         run = Run(
@@ -212,11 +222,26 @@ class Orchestrator:
                     metadata=execution_metadata,
                 )
 
-                agent_result = self.agent.run(
+                agent_result, failure = self._run_agent_safely(
                     context
                 )
 
-                run.output = agent_result.output
+                if failure is not None:
+                    run.error = (
+                        f"{failure.code}:{failure.message}"
+                    )
+                    event["error"] = run.error
+                    event["failure"] = {
+                        "kind": failure.kind.value,
+                        "code": failure.code,
+                        "recoverable": failure.recoverable,
+                    }
+                else:
+                    run.output = (
+                        agent_result.output
+                        if agent_result is not None
+                        else None
+                    )
 
                 prediction = Prediction(
                     action="execute_task",
@@ -224,7 +249,11 @@ class Orchestrator:
                     confidence=0.5,
                 )
 
-                observed = "completed"
+                observed = (
+                    "completed"
+                    if failure is None
+                    else "failed"
+                )
 
                 error = compare(
                     prediction,
@@ -238,8 +267,14 @@ class Orchestrator:
                 event["output"] = run.output
                 event["provider"] = (
                     agent_result.provider
+                    if agent_result is not None
+                    else None
                 )
-                event["model"] = agent_result.model
+                event["model"] = (
+                    agent_result.model
+                    if agent_result is not None
+                    else None
+                )
                 event["prediction"] = {
                     "action": prediction.action,
                     "expected": prediction.expected,
@@ -249,9 +284,13 @@ class Orchestrator:
                     error.magnitude
                 )
 
-                tool_calls = agent_result.metadata.get(
-                    "tool_calls",
-                    [],
+                tool_calls = (
+                    agent_result.metadata.get(
+                        "tool_calls",
+                        [],
+                    )
+                    if agent_result is not None
+                    else []
                 )
 
                 failed_tools = [
