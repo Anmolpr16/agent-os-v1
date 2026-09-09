@@ -60,3 +60,4 @@ def load_skill(path: str | Path) -> Skill:
         failure_conditions=metadata.get("failure_conditions", []),
         rubric=metadata.get("rubric", {}),
     )
+from .skill_registry import SkillRegistry, SkillVersion

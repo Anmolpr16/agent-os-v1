@@ -8,3 +8,5 @@ __all__ = [
     "MemoryStore",
     "Provenance",
 ]
+from agent_os.memory_graph import MemoryEdge, MemoryGraph, MemoryNode
+from agent_os.ingestion import IngestionRecord, KnowledgeIngestor
