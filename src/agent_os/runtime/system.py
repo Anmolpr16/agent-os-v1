@@ -10,6 +10,8 @@ from .limits import ExecutionLimits
 from .lifecycle import RuntimeLifecycle, check_runtime
 from ..memory_graph_store import PersistentMemoryGraph
 from ..memory_context import MemoryContextBuilder
+from ..skill_registry import SkillRegistry
+from ..skill_context import SkillContextBuilder
 from .memory_consolidation import MemoryConsolidator
 from .observability import RuntimeMetrics
 from .replanning import Replanner
@@ -38,6 +40,7 @@ class AgentOSRuntime:
         approval=None,
         evaluation=None,
         memory_graph=None,
+        skill_registry=None,
     ):
         self.agent = agent
         self.memory = memory
@@ -50,6 +53,8 @@ class AgentOSRuntime:
         self.lifecycle = RuntimeLifecycle()
         self.memory_graph = memory_graph or PersistentMemoryGraph()
         self.memory_context = MemoryContextBuilder(self.memory_graph)
+        self.skill_registry = skill_registry or SkillRegistry()
+        self.skill_context = SkillContextBuilder(self.skill_registry)
         self.approval = approval
         self.evaluation = evaluation
 
@@ -96,7 +101,10 @@ class AgentOSRuntime:
             AgentContext(
                 task_id=task_id,
                 objective=objective,
-                metadata=self.memory_context.build(objective),
+                metadata={
+                    **self.memory_context.build(objective),
+                    **self.skill_context.build(objective),
+                },
             ),
             required_keywords,
         )
