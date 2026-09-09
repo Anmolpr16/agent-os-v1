@@ -104,3 +104,56 @@ def test_orchestrator_fails_on_tool_failure():
 
     assert persisted[-1]["state"] == "failed"
     assert persisted[-1]["event"]["error"] == run.error
+
+
+def test_orchestrator_persists_selected_skill():
+    from agent_os.agents import Agent
+    from agent_os.core.orchestrator import Orchestrator, Task
+    from agent_os.observability import RunRepository
+    from agent_os.providers import MockProvider
+    from agent_os.skill_runtime import Skill, SkillRegistry
+
+    memory = MemoryStore(":memory:")
+    repository = RunRepository(memory.conn)
+
+    registry = SkillRegistry()
+    registry.register(
+        Skill(
+            name="research",
+            version="1.0.0",
+            objective="research evidence verification",
+            inputs=["research question"],
+            procedure=["Gather evidence.", "Verify evidence."],
+        )
+    )
+
+    orchestrator = Orchestrator(
+        memory=memory,
+        agent=Agent(
+            MockProvider(response="task completed")
+        ),
+        run_repository=repository,
+        skill_registry=registry,
+    )
+
+    task_id = "durable-skill-001"
+
+    orchestrator.run(
+        Task(
+            id=task_id,
+            objective="research evidence verification",
+        )
+    )
+
+    events = repository.list_events(task_id)
+
+    planning_event = next(
+        event
+        for event in events
+        if event["state"] == "planning"
+    )
+
+    assert planning_event["event"]["plan"]["skill"] == "research"
+    assert planning_event["event"]["plan"]["skill_score"] > 0.0
+
+    memory.close()

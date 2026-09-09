@@ -5,6 +5,7 @@ from agent_os.agents import Agent, AgentContext
 from agent_os.evaluation import EvaluationRunner
 from agent_os.memory import MemoryRetriever, MemoryStore
 from agent_os.observability import RunRepository
+from agent_os.skill_runtime import SkillRegistry, SkillSelector
 from agent_os.providers import MockProvider
 from agent_os.tools import (
     PermissionPolicy,
@@ -51,6 +52,7 @@ class Orchestrator:
         evaluation: EvaluationRunner | None = None,
         tools: ToolExecutor | None = None,
         run_repository: RunRepository | None = None,
+        skill_registry: SkillRegistry | None = None,
     ):
         self.memory = memory or MemoryStore(":memory:")
 
@@ -76,6 +78,13 @@ class Orchestrator:
             self.memory.conn
         )
 
+        self.skill_registry = (
+            skill_registry or SkillRegistry()
+        )
+        self.skill_selector = SkillSelector(
+            self.skill_registry
+        )
+
     def run(self, task: Task) -> Run:
         run = Run(
             task_id=task.id,
@@ -83,6 +92,7 @@ class Orchestrator:
         )
 
         retrieved = []
+        selected_skill = None
 
         for state in self.ORDER:
             run.state = state
@@ -115,6 +125,10 @@ class Orchestrator:
                     run.plan.validate()
                 )
 
+                selected_skill = self.skill_selector.select(
+                    task.objective
+                )
+
                 event["plan"] = {
                     "objective": run.plan.objective,
                     "steps": len(run.plan.steps),
@@ -122,18 +136,50 @@ class Orchestrator:
                     "validation_errors": (
                         validation_errors
                     ),
+                    "skill": (
+                        selected_skill.skill.name
+                        if selected_skill
+                        else None
+                    ),
+                    "skill_score": (
+                        selected_skill.score
+                        if selected_skill
+                        else 0.0
+                    ),
                 }
 
             elif state == State.EXECUTION:
+                execution_metadata = {
+                    **task.metadata,
+                    "memory_matches": len(
+                        retrieved
+                    ),
+                }
+
+                if selected_skill is not None:
+                    execution_metadata["skill"] = {
+                        "name": selected_skill.skill.name,
+                        "version": selected_skill.skill.version,
+                        "objective": selected_skill.skill.objective,
+                        "inputs": list(
+                            selected_skill.skill.inputs
+                        ),
+                        "procedure": list(
+                            selected_skill.skill.procedure
+                        ),
+                        "failure_conditions": list(
+                            selected_skill.skill.failure_conditions
+                        ),
+                        "evaluation_rubric": list(
+                            selected_skill.skill.evaluation_rubric
+                        ),
+                        "selection_score": selected_skill.score,
+                    }
+
                 context = AgentContext(
                     task_id=task.id,
                     objective=task.objective,
-                    metadata={
-                        **task.metadata,
-                        "memory_matches": len(
-                            retrieved
-                        ),
-                    },
+                    metadata=execution_metadata,
                 )
 
                 agent_result = self.agent.run(
