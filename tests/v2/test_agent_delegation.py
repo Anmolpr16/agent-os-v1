@@ -153,3 +153,37 @@ def test_coordinator_preserves_failed_tasks():
     assert result.success is False
     assert len(result.results) == 1
     assert result.results[0].success is False
+
+
+def test_coordinator_can_stop_on_first_failure():
+    from agent_os.agents import AgentCoordinator, AgentManager
+
+    result = AgentCoordinator(AgentManager()).run(
+        "missing",
+        [
+            DelegatedTask("task-1", "first"),
+            DelegatedTask("task-2", "second"),
+        ],
+        stop_on_failure=True,
+    )
+
+    assert result.success is False
+    assert [item.task_id for item in result.results] == ["task-1"]
+
+
+def test_coordinator_continues_by_default():
+    from agent_os.agents import AgentCoordinator, AgentManager
+
+    result = AgentCoordinator(AgentManager()).run(
+        "missing",
+        [
+            DelegatedTask("task-1", "first"),
+            DelegatedTask("task-2", "second"),
+        ],
+    )
+
+    assert result.success is False
+    assert [item.task_id for item in result.results] == [
+        "task-1",
+        "task-2",
+    ]

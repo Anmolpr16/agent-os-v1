@@ -23,10 +23,15 @@ class AgentCoordinator:
         self,
         agent_name: str,
         tasks: list[DelegatedTask],
+        stop_on_failure: bool = False,
     ) -> CoordinationResult:
-        results = [
-            self.manager.delegate(agent_name, task)
-            for task in tasks
-        ]
+        results: list[DelegatedResult] = []
+
+        for task in tasks:
+            result = self.manager.delegate(agent_name, task)
+            results.append(result)
+
+            if stop_on_failure and not result.success:
+                break
 
         return CoordinationResult(results=results)
