@@ -10,6 +10,7 @@ class RuntimeConfig:
 
     def __post_init__(self) -> None:
         for field_name in (
+            "memory_path",
             "provider_name",
             "provider_model",
             "provider_response",

@@ -46,3 +46,11 @@ def test_runtime_config_rejects_empty_provider_response():
 
     with pytest.raises(ValueError, match="provider_response"):
         RuntimeConfig(provider_response="")
+
+
+def test_runtime_config_rejects_empty_memory_path():
+    import pytest
+    from agent_os.config import RuntimeConfig
+
+    with pytest.raises(ValueError, match="memory_path"):
+        RuntimeConfig(memory_path="")
