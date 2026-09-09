@@ -10,6 +10,10 @@ from .skill_evolution import SkillEvolution, SkillEvolutionResult, SkillRevision
 from .memory_consolidation import ConsolidationRecord, MemoryConsolidator
 
 __all__ = [
+    "check_runtime",
+    "RuntimeLifecycle",
+    "RuntimeHealth",
+    "LifecycleEvent",
     "AgentMessage", "MessageBus", "SharedState", "ExecutionLimits",
     "DependencyError", "TaskGraph", "TaskNode",
     "AuditEvent", "AuditLog",
@@ -29,3 +33,4 @@ from .policy import RuntimePolicy
 
 from .pipeline import EndToEndPipeline, PipelineResult
 from .contracts import RuntimeRequest, RuntimeResponse, validate_request
+from .lifecycle import LifecycleEvent, RuntimeHealth, RuntimeLifecycle, check_runtime

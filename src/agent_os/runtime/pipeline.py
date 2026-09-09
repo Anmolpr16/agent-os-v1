@@ -49,6 +49,8 @@ class EndToEndPipeline:
             )
 
         self.audit.record("pipeline_started", "pipeline", task_id)
+        if hasattr(self.runtime, "lifecycle"):
+            self.runtime.lifecycle.emit("pipeline_started", task_id)
 
         holder = {}
 
@@ -74,6 +76,12 @@ class EndToEndPipeline:
                 task_id,
                 {"error": recovered.error},
             )
+            if hasattr(self.runtime, "lifecycle"):
+                self.runtime.lifecycle.emit(
+                    "pipeline_failed",
+                    task_id,
+                    {"error": recovered.error},
+                )
             return PipelineResult(
                 False,
                 task_id,
@@ -142,6 +150,8 @@ class EndToEndPipeline:
                 "attempts": len(result.attempts),
             },
         )
+        if hasattr(self.runtime, "lifecycle"):
+            self.runtime.lifecycle.emit("pipeline_completed", task_id)
 
         return PipelineResult(
             True,

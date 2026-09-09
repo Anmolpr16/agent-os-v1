@@ -7,6 +7,7 @@ from .closed_loop import ClosedLoopRunner, ClosedLoopResult
 from .dag import TaskGraph, TaskNode
 from .executor import GraphExecutionResult, GraphExecutor
 from .limits import ExecutionLimits
+from .lifecycle import RuntimeLifecycle, check_runtime
 from .memory_consolidation import MemoryConsolidator
 from .observability import RuntimeMetrics
 from .replanning import Replanner
@@ -43,6 +44,7 @@ class AgentOSRuntime:
         self.audit = audit or AuditLog()
         self.metrics = metrics or RuntimeMetrics()
         self.replanner = replanner or Replanner()
+        self.lifecycle = RuntimeLifecycle()
         self.approval = approval
         self.evaluation = evaluation
 
@@ -84,6 +86,7 @@ class AgentOSRuntime:
             else 3,
         )
         self.audit.record("closed_loop_started", "runtime", task_id)
+        self.lifecycle.emit("closed_loop_started", task_id)
         result = loop.run(
             AgentContext(task_id=task_id, objective=objective),
             required_keywords,
@@ -94,10 +97,23 @@ class AgentOSRuntime:
             task_id,
             {"attempts": len(result.attempts)},
         )
+        event_name = (
+            "closed_loop_completed"
+            if result.success
+            else "closed_loop_failed"
+        )
         self.metrics.emit(
-            "closed_loop_completed" if result.success else "closed_loop_failed",
+            event_name,
             task_id,
             {"attempts": len(result.attempts)},
+        )
+        self.lifecycle.emit(
+            event_name,
+            task_id,
+            {
+                "attempts": len(result.attempts),
+                "error": result.error,
+            },
         )
         return result
 
@@ -122,3 +138,6 @@ class AgentOSRuntime:
             "audit_events": len(self.audit.all()),
             "metrics": self.metrics.summary(),
         }
+
+    def health(self):
+        return check_runtime(self)
