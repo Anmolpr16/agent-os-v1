@@ -85,6 +85,7 @@ class AutomaticApproval:
         )
 
 from agent_os.human_judgment import DecisionStatus, Evidence, HumanJudgment
+from .repository import GovernanceRepository
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -103,13 +104,24 @@ class HumanJudgmentApproval:
         *,
         requested_by: str = "agent",
         audit: "AuditLog | None" = None,
+        repository: GovernanceRepository | None = None,
     ):
         self.judgment = judgment
         self.requested_by = requested_by
         self.audit = audit
+        self.repository = repository
         self._proposals: dict[str, str] = {}
         self._audited_proposals: set[str] = set()
         self._audited_decisions: set[str] = set()
+        if self.repository is not None:
+            self.repository.load_into(self.judgment)
+            rows = self.repository.conn.execute(
+                "SELECT DISTINCT task_id FROM governance_proposals ORDER BY task_id"
+            ).fetchall()
+            for row in rows:
+                latest = self.judgment.latest(row[0])
+                if latest is not None:
+                    self._proposals[row[0]] = latest.proposal.proposal_id
 
     def proposal_id(self, task_id: str) -> str | None:
         return self._proposals.get(task_id)
@@ -209,6 +221,8 @@ class HumanJudgmentApproval:
             )
             proposal_id = proposal.proposal_id
             self._proposals[request.task_id] = proposal_id
+            if self.repository is not None:
+                self.repository.save_proposal(proposal)
 
             record = self.judgment.get(proposal_id)
             if record is not None:
