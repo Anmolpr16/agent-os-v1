@@ -161,6 +161,11 @@ class MCPToolRegistrar:
                 name=tool_name,
                 description=description,
                 handler=handler,
+                input_schema=(
+                    dict(definition.input_schema)
+                    if definition.input_schema is not None
+                    else None
+                ),
             )
 
             existing.add(tool_name)

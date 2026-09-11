@@ -9,6 +9,11 @@ class Tool:
     name: str
     description: str
     handler: Callable[..., Any]
+    input_schema: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.input_schema is not None and not isinstance(self.input_schema, dict):
+            raise TypeError("tool_input_schema_invalid")
 
 
 class ToolRegistry:
@@ -22,6 +27,7 @@ class ToolRegistry:
         name: str,
         description: str,
         handler: Callable[..., Any],
+        input_schema: dict[str, Any] | None = None,
     ) -> Tool:
         if not name.strip():
             raise ValueError("tool_name_missing")
@@ -35,6 +41,11 @@ class ToolRegistry:
             name=name,
             description=description,
             handler=handler,
+            input_schema=(
+                dict(input_schema)
+                if input_schema is not None
+                else None
+            ),
         )
 
         self._tools[name] = tool

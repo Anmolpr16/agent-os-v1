@@ -1,3 +1,5 @@
+from agent_os.tools.registry import Tool
+import pytest
 from agent_os.integration.mcp import MCPIntegration
 from agent_os.integration.mcp_tools import MCPToolRegistrar
 from agent_os.tools import ToolRegistry
@@ -273,3 +275,61 @@ def test_registered_mcp_tool_rejects_invalid_arguments_before_remote_call():
 
     assert len(calls) == 1
     assert calls[0]["method"] == "tools/list"
+
+
+def test_registered_mcp_tool_exposes_input_schema():
+    schema = {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+            "query": {"type": "string"},
+        },
+        "additionalProperties": False,
+    }
+
+    def transport(request):
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "tools": [
+                    {
+                        "name": "lookup",
+                        "description": "Lookup a value",
+                        "inputSchema": schema,
+                    }
+                ]
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    registry = ToolRegistry()
+
+    MCPToolRegistrar(integration, registry).register()
+
+    tool = registry.get("mcp:lookup")
+
+    assert tool.input_schema == schema
+    assert tool.input_schema is not schema
+
+
+def test_legacy_tool_registration_has_no_input_schema():
+    registry = ToolRegistry()
+
+    tool = registry.register(
+        name="legacy",
+        description="Legacy tool",
+        handler=lambda **kwargs: kwargs,
+    )
+
+    assert tool.input_schema is None
+
+
+def test_tool_rejects_non_dict_input_schema():
+    with pytest.raises(TypeError, match="tool_input_schema_invalid"):
+        Tool(
+            name="invalid",
+            description="Invalid schema",
+            handler=lambda **kwargs: kwargs,
+            input_schema="not-a-schema",
+        )
