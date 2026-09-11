@@ -122,5 +122,80 @@ def test_runtime_without_skill_learning_preserves_existing_behavior():
     assert AgentOSRuntime().skill_improvement is None
 
 
+def test_runtime_skill_improvement_rejection_does_not_mutate_registry():
+    from agent_os.evaluation import EvaluationRunner
+    from agent_os.runtime.system import AgentOSRuntime
+    from agent_os.skill_improvement_loop import SkillImprovementLoop
+    from agent_os.skill_registry import SkillRegistry
+
+    class StableAgent:
+        def run(self, context):
+            return type("Result", (), {"output": "still weak"})()
+
+    registry = SkillRegistry()
+    registry.register("research", "Produce a researched answer.")
+
+    runtime = AgentOSRuntime(
+        agent=StableAgent(),
+        evaluation=EvaluationRunner(),
+        skill_registry=registry,
+        skill_improvement=SkillImprovementLoop(
+            registry,
+            max_attempts=1,
+        ),
+    )
+
+    result = runtime.execute_closed_loop(
+        "skill-learning-3",
+        "research answer",
+        ["target"],
+    )
+
+    assert not result.success
+    assert registry.latest("research").version == 1
+    assert any(
+        event.event == "skill_improvement_completed"
+        for event in runtime.audit.all()
+    )
+
+
+def test_runtime_skill_improvement_failure_is_audited():
+    from agent_os.evaluation import EvaluationRunner
+    from agent_os.runtime.system import AgentOSRuntime
+    from agent_os.skill_improvement_loop import SkillImprovementLoop
+    from agent_os.skill_registry import SkillRegistry
+
+    class FailingAgent:
+        def run(self, context):
+            raise RuntimeError("agent_failure")
+
+    registry = SkillRegistry()
+    registry.register("research", "Produce a researched answer.")
+
+    runtime = AgentOSRuntime(
+        agent=FailingAgent(),
+        evaluation=EvaluationRunner(),
+        skill_registry=registry,
+        skill_improvement=SkillImprovementLoop(
+            registry,
+            max_attempts=1,
+        ),
+    )
+
+    result = runtime.execute_closed_loop(
+        "skill-learning-4",
+        "research answer",
+        ["target"],
+    )
+
+    assert not result.success
+    assert result.error == "agent_failure"
+    assert registry.latest("research").version == 1
+    assert any(
+        event.event == "skill_improvement_failed"
+        for event in runtime.audit.all()
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit("pytest-only module")
