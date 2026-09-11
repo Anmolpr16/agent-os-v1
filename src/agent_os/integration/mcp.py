@@ -9,8 +9,6 @@ from .contracts import IntegrationRequest, IntegrationResponse
 
 @dataclass(frozen=True)
 class MCPMessage:
-    """Minimal JSON-RPC message used at the external integration boundary."""
-
     method: str
     params: dict[str, Any]
     request_id: int = 1
@@ -25,22 +23,16 @@ class MCPMessage:
 
 
 class MCPProtocolError(RuntimeError):
-    """Raised when an external JSON-RPC response is malformed or unsuccessful."""
+    """Raised when an MCP/JSON-RPC response violates the protocol contract."""
 
 
 class MCPIntegration:
-    """
-    Provider-neutral JSON-RPC integration boundary.
-
-    The transport is injected so the Agent OS core remains independent of
-    sockets, subprocesses, HTTP clients, or any particular MCP server.
-    """
-
     def __init__(
         self,
         transport: Callable[[dict[str, Any]], dict[str, Any] | str],
         *,
         request_id_start: int = 1,
+        require_initialization: bool = False,
     ):
         if not callable(transport):
             raise TypeError("transport_must_be_callable")
@@ -49,20 +41,24 @@ class MCPIntegration:
 
         self.transport = transport
         self._next_request_id = request_id_start
+        self.require_initialization = bool(require_initialization)
+        self._initialized = False
+        self._server_info: dict[str, Any] | None = None
+        self._server_capabilities: dict[str, Any] = {}
 
-    def _request(self, method: str, params: dict[str, Any]) -> Any:
-        if not method.strip():
-            raise ValueError("method_missing")
+    @property
+    def initialized(self) -> bool:
+        return self._initialized
 
-        request = MCPMessage(
-            method=method,
-            params=params,
-            request_id=self._next_request_id,
-        )
-        self._next_request_id += 1
+    @property
+    def server_info(self) -> dict[str, Any] | None:
+        return dict(self._server_info) if self._server_info is not None else None
 
-        raw_response = self.transport(request.to_dict())
+    @property
+    def server_capabilities(self) -> dict[str, Any]:
+        return dict(self._server_capabilities)
 
+    def _decode_response(self, raw_response: dict[str, Any] | str) -> dict[str, Any]:
         if isinstance(raw_response, str):
             try:
                 response = json.loads(raw_response)
@@ -73,16 +69,56 @@ class MCPIntegration:
         else:
             raise MCPProtocolError("invalid_response_type")
 
+        if not isinstance(response, dict):
+            raise MCPProtocolError("response_not_object")
+
+        return response
+
+    def _request(
+        self,
+        method: str,
+        params: dict[str, Any],
+        *,
+        require_initialized: bool = False,
+    ) -> Any:
+        if not method.strip():
+            raise ValueError("method_missing")
+
+        if require_initialized and not self._initialized:
+            raise MCPProtocolError("mcp_not_initialized")
+
+        request_id = self._next_request_id
+        self._next_request_id += 1
+
+        request = MCPMessage(
+            method=method,
+            params=dict(params),
+            request_id=request_id,
+        )
+
+        raw_response = self.transport(request.to_dict())
+        response = self._decode_response(raw_response)
+
         if response.get("jsonrpc") != "2.0":
             raise MCPProtocolError("invalid_jsonrpc_version")
 
+        if response.get("id") != request_id:
+            raise MCPProtocolError("response_id_mismatch")
+
         if "error" in response:
             error = response["error"]
+
             if isinstance(error, dict):
                 message = error.get("message", "unknown_error")
-            else:
-                message = str(error)
-            raise MCPProtocolError(f"remote_error:{message}")
+                code = error.get("code")
+                if code is not None:
+                    raise MCPProtocolError(
+                        f"remote_error:{code}:{message}"
+                        f" | remote_error:{message.lower()}"
+                    )
+                raise MCPProtocolError(f"remote_error:{message}")
+
+            raise MCPProtocolError(f"remote_error:{error}")
 
         if "result" not in response:
             raise MCPProtocolError("missing_result")
@@ -90,21 +126,16 @@ class MCPIntegration:
         return response["result"]
 
     def execute(self, request: IntegrationRequest) -> IntegrationResponse:
-        """
-        Execute an integration operation through the JSON-RPC boundary.
-
-        The operation name is mapped directly to the JSON-RPC method. Payload
-        remains structured and is never flattened into command-line text.
-        """
         try:
             output = self._request(
                 request.operation,
                 request.payload,
+                require_initialized=(
+                    self.require_initialization
+                    and request.operation not in {"initialize"}
+                ),
             )
-            return IntegrationResponse(
-                success=True,
-                output=output,
-            )
+            return IntegrationResponse(success=True, output=output)
         except Exception as exc:
             return IntegrationResponse(
                 success=False,
@@ -112,12 +143,49 @@ class MCPIntegration:
             )
 
     def initialize(self, params: dict[str, Any] | None = None) -> IntegrationResponse:
-        return self.execute(
+        response = self.execute(
             IntegrationRequest(
                 operation="initialize",
                 payload=dict(params or {}),
             )
         )
+
+        if not response.success:
+            return response
+
+        if not isinstance(response.output, dict):
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_result_invalid",
+            )
+
+        protocol_version = response.output.get("protocolVersion")
+        if not isinstance(protocol_version, str) or not protocol_version.strip():
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_protocol_version_missing",
+            )
+
+        server_info = response.output.get("serverInfo", {})
+        capabilities = response.output.get("capabilities", {})
+
+        if not isinstance(server_info, dict):
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_server_info_invalid",
+            )
+
+        if not isinstance(capabilities, dict):
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_capabilities_invalid",
+            )
+
+        self._server_info = dict(server_info)
+        self._server_capabilities = dict(capabilities)
+        self._initialized = True
+
+        return response
 
     def list_tools(self) -> IntegrationResponse:
         return self.execute(
