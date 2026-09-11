@@ -16,9 +16,9 @@ class SkillRunResult:
     skill_name: str
     skill_version: str
     status: str
-    steps: list[SkillStepResult] = field(
-        default_factory=list
-    )
+    steps: list[SkillStepResult] = field(default_factory=list)
+    instructions: str = ""
+    instruction_sources: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -50,6 +50,10 @@ class SkillRunner:
                     skill_version=skill.version,
                     status="failed",
                     steps=steps,
+                    instructions=skill.instructions,
+                    instruction_sources=list(
+                        skill.instruction_sources
+                    ),
                 )
 
             steps.append(
@@ -65,4 +69,8 @@ class SkillRunner:
             skill_version=skill.version,
             status="completed",
             steps=steps,
+            instructions=skill.instructions,
+            instruction_sources=list(
+                skill.instruction_sources
+            ),
         )

@@ -1,28 +1,27 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_os.instruction_loader import InstructionResolver
+
 
 @dataclass
 class Skill:
-    """Structured representation of an agent skill."""
+    """Structured representation of an agent skill plus scoped instructions."""
 
     name: str
     version: str
     objective: str
     inputs: list[str] = field(default_factory=list)
     procedure: list[str] = field(default_factory=list)
-    failure_conditions: list[str] = field(
-        default_factory=list
-    )
-    evaluation_rubric: list[str] = field(
-        default_factory=list
-    )
+    failure_conditions: list[str] = field(default_factory=list)
+    evaluation_rubric: list[str] = field(default_factory=list)
+    instructions: str = ""
+    instruction_sources: list[str] = field(default_factory=list)
 
 
 def _section(text: str, heading: str) -> list[str]:
     lines = text.splitlines()
     target = heading.strip().lower()
-
     found = False
     result = []
 
@@ -40,18 +39,12 @@ def _section(text: str, heading: str) -> list[str]:
                 break
 
         elif found and stripped.startswith("- "):
-            result.append(
-                stripped[2:].strip()
-            )
+            result.append(stripped[2:].strip())
 
         elif found:
             result.append(stripped)
 
-    return [
-        item
-        for item in result
-        if item
-    ]
+    return [item for item in result if item]
 
 
 def _numbered_section(
@@ -60,7 +53,6 @@ def _numbered_section(
 ) -> list[str]:
     lines = text.splitlines()
     target = heading.strip().lower()
-
     found = False
     result = []
 
@@ -80,21 +72,23 @@ def _numbered_section(
         if found:
             parts = stripped.split(".", 1)
 
-            if (
-                len(parts) == 2
-                and parts[0].isdigit()
-            ):
-                result.append(
-                    parts[1].strip()
-                )
+            if len(parts) == 2 and parts[0].isdigit():
+                result.append(parts[1].strip())
 
     return result
 
 
-def load_skill(path: str) -> Skill:
-    """Load a Markdown skill definition."""
+def load_skill(
+    path: str,
+    *,
+    include_instructions: bool = True,
+    instruction_root: str | Path | None = None,
+) -> Skill:
+    """Load a Markdown skill definition with optional scoped instructions."""
 
-    text = Path(path).read_text(
+    skill_path = Path(path).resolve()
+
+    text = skill_path.read_text(
         encoding="utf-8"
     )
 
@@ -107,9 +101,25 @@ def load_skill(path: str) -> Skill:
     )[0]
 
     objective = (
-        _section(text, "Objective")
-        or [""]
+        _section(text, "Objective") or [""]
     )[0]
+
+    instructions = ""
+    instruction_sources: list[str] = []
+
+    if include_instructions:
+        resolver = InstructionResolver(
+            root=instruction_root
+        )
+
+        documents = resolver.discover(skill_path)
+
+        instruction_sources = [
+            document.path
+            for document in documents
+        ]
+
+        instructions = resolver.resolve(skill_path)
 
     return Skill(
         name=name,
@@ -128,4 +138,6 @@ def load_skill(path: str) -> Skill:
             text,
             "Evaluation Rubric",
         ),
+        instructions=instructions,
+        instruction_sources=instruction_sources,
     )

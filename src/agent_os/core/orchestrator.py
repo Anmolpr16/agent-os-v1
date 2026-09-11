@@ -238,6 +238,10 @@ class Orchestrator:
                         "evaluation_rubric": list(
                             selected_skill.skill.evaluation_rubric
                         ),
+                        "instructions": selected_skill.skill.instructions,
+                        "instruction_sources": list(
+                            selected_skill.skill.instruction_sources
+                        ),
                         "selection_score": selected_skill.score,
                     }
 
