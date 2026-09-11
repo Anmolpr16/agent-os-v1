@@ -7,6 +7,7 @@ from .skill_evolution import SkillEvolutionEngine
 from .skill_feedback import SkillFeedbackBuilder
 from .skill_optimizer import SkillOptimizer
 from .skill_registry import SkillRegistry, SkillVersion
+from .skill_scoring import extract_score
 
 
 @dataclass(frozen=True)
@@ -89,34 +90,8 @@ class SkillImprovementLoop:
         return clone
 
     @staticmethod
-    def _score(result: Any) -> float:
-        if isinstance(result, (int, float)):
-            return float(result)
-
-        if isinstance(result, dict):
-            for key in ("score", "overall_score", "value"):
-                value = result.get(key)
-                if isinstance(value, (int, float)):
-                    return float(value)
-
-            metrics = result.get("metrics")
-            if isinstance(metrics, dict):
-                values = [
-                    float(value)
-                    for value in metrics.values()
-                    if isinstance(value, (int, float))
-                ]
-                if values:
-                    return sum(values) / len(values)
-
-        for key in ("score", "overall_score", "value"):
-            value = getattr(result, key, None)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-        raise ValueError(
-            "evaluation result does not contain a numeric score"
-        )
+    def _score(result) -> float:
+        return extract_score(result)
 
     def improve(
         self,
@@ -152,7 +127,7 @@ class SkillImprovementLoop:
             result=baseline_evaluation,
         )
 
-        baseline_score = self._score(baseline_evaluation)
+        baseline_score = extract_score(baseline_evaluation)
         best_score = baseline_score
         last_feedback = baseline_feedback.feedback
         candidate_version: SkillVersion | None = None
@@ -210,7 +185,7 @@ class SkillImprovementLoop:
                 result=candidate_evaluation,
             )
 
-            candidate_score = self._score(candidate_evaluation)
+            candidate_score = extract_score(candidate_evaluation)
             last_feedback = candidate_feedback.feedback
 
             if candidate_score <= best_score:

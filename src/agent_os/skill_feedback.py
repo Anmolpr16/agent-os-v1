@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .skill_scoring import extract_score
+
 
 @dataclass(frozen=True)
 class SkillFeedback:
@@ -18,29 +20,6 @@ class SkillFeedbackBuilder:
 
     def __init__(self, threshold: float = 0.8):
         self.threshold = float(threshold)
-
-    @staticmethod
-    def _extract_score(result) -> float:
-        if result is None:
-            return 0.0
-
-        for name in ("score", "overall_score", "value"):
-            value = getattr(result, name, None)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-        metrics = getattr(result, "metrics", None)
-
-        if isinstance(metrics, dict) and metrics:
-            values = [
-                float(value)
-                for value in metrics.values()
-                if isinstance(value, (int, float))
-            ]
-            if values:
-                return sum(values) / len(values)
-
-        return 0.0
 
     @staticmethod
     def _extract_feedback(result) -> str:
@@ -62,7 +41,7 @@ class SkillFeedbackBuilder:
         if not skill_id.strip():
             raise ValueError("skill_id_required")
 
-        score = self._extract_score(result)
+        score = 0.0 if result is None else extract_score(result)
 
         return SkillFeedback(
             skill_id=skill_id,

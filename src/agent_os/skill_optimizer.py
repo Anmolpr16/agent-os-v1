@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .skill_scoring import extract_score
+
 
 @dataclass(frozen=True)
 class SkillOptimizationResult:
@@ -26,25 +28,7 @@ class SkillOptimizer:
 
     @staticmethod
     def _score(result) -> float:
-        if result is None:
-            return 0.0
-
-        for name in ("score", "overall_score", "value"):
-            value = getattr(result, name, None)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-        metrics = getattr(result, "metrics", None)
-        if isinstance(metrics, dict) and metrics:
-            values = [
-                float(value)
-                for value in metrics.values()
-                if isinstance(value, (int, float))
-            ]
-            if values:
-                return sum(values) / len(values)
-
-        return 0.0
+        return extract_score(result)
 
     def optimize(
         self,
