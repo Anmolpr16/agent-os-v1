@@ -94,12 +94,20 @@ class PersistentMemoryGraph:
         )
 
         for node in payload.get("nodes", []):
-            self.graph.add_node(
+            restored = self.graph.add_node(
                 node["node_id"],
                 node["kind"],
                 node["content"],
                 node.get("metadata", {}),
             )
+            if node.get("created_at"):
+                self.graph._nodes[node["node_id"]] = MemoryNode(
+                    node_id=restored.node_id,
+                    kind=restored.kind,
+                    content=restored.content,
+                    metadata=dict(restored.metadata),
+                    created_at=node["created_at"],
+                )
 
         for edge in payload.get("edges", []):
             if (

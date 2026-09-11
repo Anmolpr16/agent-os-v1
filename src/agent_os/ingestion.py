@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .memory_graph import MemoryGraph
+from .memory.provenance import Provenance
 
 
 @dataclass(frozen=True)
@@ -42,10 +43,28 @@ class KnowledgeIngestor:
             ingested_at=datetime.now(timezone.utc).isoformat(),
         )
 
+        provenance = Provenance.from_content(
+            content,
+            uri=record.metadata.get("uri"),
+            title=record.metadata.get("title"),
+        )
+
+        node_metadata = dict(record.metadata)
+        node_metadata["source_id"] = source_id
+        node_metadata["source_type"] = source_type
+        node_metadata["ingested_at"] = record.ingested_at
+        node_metadata["provenance"] = {
+            "uri": provenance.uri,
+            "title": provenance.title,
+            "content_hash": provenance.content_hash,
+            "created_at": provenance.created_at,
+        }
+
         self.graph.add_node(
             source_id,
             source_type,
             content,
-            record.metadata,
+            node_metadata,
         )
+
         return record

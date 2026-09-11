@@ -23,9 +23,10 @@ class MemoryConsolidator:
             raise ValueError("output_required")
 
         data = dict(metadata or {})
+        data.setdefault("task_id", task_id)
         self.store.add_memory(
-            "episodic",
             output,
+            kind="episodic",
             metadata=data,
         )
         return ConsolidationRecord(task_id, output, data)

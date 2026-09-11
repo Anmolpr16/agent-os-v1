@@ -42,6 +42,10 @@ class MemoryGraph:
         if not content.strip():
             raise ValueError("node_content_required")
 
+        existing = self._nodes.get(node_id)
+        if existing is not None:
+            return existing
+
         node = MemoryNode(
             node_id=node_id,
             kind=kind,
@@ -68,6 +72,14 @@ class MemoryGraph:
             raise ValueError("edge_relation_required")
         if weight < 0:
             raise ValueError("edge_weight_invalid")
+
+        for existing in self._edges:
+            if (
+                existing.source == source
+                and existing.relation == relation
+                and existing.target == target
+            ):
+                return existing
 
         edge = MemoryEdge(
             source=source,
