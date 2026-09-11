@@ -65,3 +65,32 @@ CREATE INDEX IF NOT EXISTS idx_relationship_source
 
 CREATE INDEX IF NOT EXISTS idx_relationship_target
     ON relationships(target_entity_id);
+
+CREATE TABLE IF NOT EXISTS governance_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    proposal_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS governance_decisions (
+    decision_id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    decision_json TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (proposal_id) REFERENCES governance_proposals(proposal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_governance_proposals_task
+    ON governance_proposals(task_id);
+
+CREATE INDEX IF NOT EXISTS idx_governance_proposals_status
+    ON governance_proposals(status);
+
+CREATE INDEX IF NOT EXISTS idx_governance_decisions_proposal
+    ON governance_decisions(proposal_id);
+
+CREATE INDEX IF NOT EXISTS idx_governance_decisions_timestamp
+    ON governance_decisions(timestamp);

@@ -18,4 +18,6 @@ __all__ = [
 
 from .pipeline import GovernancePipeline, GovernanceResult
 
-__all__ += ["GovernancePipeline", "GovernanceResult"]
+__all__ += ["GovernancePipeline", "GovernanceResult", "GovernanceRepository"]
+
+from .repository import GovernanceRepository
