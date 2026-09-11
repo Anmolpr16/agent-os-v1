@@ -195,7 +195,7 @@ class GovernanceRepository:
         payload = _decision_to_dict(decision)
         self.conn.execute(
             """
-            INSERT INTO governance_decisions
+            INSERT OR IGNORE INTO governance_decisions
                 (decision_id, proposal_id, status, decision_json, timestamp)
             VALUES (?, ?, ?, ?, ?)
             """,

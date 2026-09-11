@@ -125,3 +125,36 @@ def test_governance_repository_pending_survives_restart(tmp_path: Path):
         assert len(pending) == 1
         assert pending[0].proposal.proposal_id == proposal.proposal_id
         assert pending[0].status == DecisionStatus.PENDING
+
+
+def test_governance_repository_listener_persists_decision(tmp_path: Path):
+    path = tmp_path / "governance-listener.db"
+
+    with Database(str(path)) as database:
+        judgment = HumanJudgment()
+        repository = GovernanceRepository(database=database)
+        judgment.add_decision_listener(repository.save_decision)
+
+        proposal = make_proposal(judgment)
+        repository.save_proposal(proposal)
+
+        decision = judgment.approve(
+            proposal_id=proposal.proposal_id,
+            decided_by="human",
+            rationale="Listener persisted the decision.",
+        )
+
+        restored = repository.get(proposal.proposal_id)
+
+        assert restored is not None
+        assert restored.decision == decision
+
+        # Persistence must be idempotent for the same immutable decision.
+        repository.save_decision(decision)
+
+        count = database.conn.execute(
+            "SELECT COUNT(*) FROM governance_decisions WHERE decision_id = ?",
+            (decision.decision_id,),
+        ).fetchone()[0]
+
+        assert count == 1
