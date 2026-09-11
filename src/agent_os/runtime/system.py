@@ -39,6 +39,7 @@ class AgentOSRuntime:
         replanner: Replanner | None = None,
         approval=None,
         evaluation=None,
+        human_judgment=None,
         memory_graph=None,
         skill_registry=None,
     ):
@@ -55,7 +56,14 @@ class AgentOSRuntime:
         self.memory_context = MemoryContextBuilder(self.memory_graph)
         self.skill_registry = skill_registry or SkillRegistry()
         self.skill_context = SkillContextBuilder(self.skill_registry)
-        self.approval = approval
+        if approval is not None:
+            self.approval = approval
+        elif human_judgment is not None:
+            from agent_os.governance import HumanJudgmentApproval
+            self.approval = HumanJudgmentApproval(human_judgment)
+        else:
+            self.approval = None
+        self.human_judgment = human_judgment
         self.evaluation = evaluation
 
     def execute_graph(

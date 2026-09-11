@@ -4,6 +4,7 @@ from .approval import (
     ApprovalRequest,
     ApprovalStatus,
     AutomaticApproval,
+    HumanJudgmentApproval,
 )
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalStatus",
     "AutomaticApproval",
+    "HumanJudgmentApproval",
 ]
 
 from .pipeline import GovernancePipeline, GovernanceResult
