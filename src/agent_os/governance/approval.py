@@ -109,6 +109,23 @@ class HumanJudgmentApproval:
     ) -> ApprovalDecision:
         proposal_id = self._proposals.get(request.task_id)
 
+        if proposal_id is not None:
+            record = self.judgment.get(proposal_id)
+
+            # A revision request resolves the old proposal. If a new
+            # proposal has subsequently been submitted for the same task,
+            # bind the runtime approval request to that latest pending one.
+            if (
+                record is not None
+                and record.status == DecisionStatus.REVISION_REQUESTED
+            ):
+                latest = self.judgment.latest(request.task_id)
+                if latest is not None:
+                    proposal_id = latest.proposal.proposal_id
+                    self._proposals[request.task_id] = proposal_id
+                else:
+                    proposal_id = None
+
         if proposal_id is None:
             proposal = self.judgment.propose(
                 task_id=request.task_id,

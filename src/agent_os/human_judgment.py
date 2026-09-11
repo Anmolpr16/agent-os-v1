@@ -209,6 +209,16 @@ class HumanJudgment:
     def get(self, proposal_id: str) -> DecisionRecord | None:
         return self._records.get(proposal_id)
 
+    def latest(self, task_id: str) -> DecisionRecord | None:
+        records = [
+            record
+            for record in self._records.values()
+            if record.proposal.task_id == task_id
+        ]
+        if not records:
+            return None
+        return max(records, key=lambda record: record.proposal.created_at)
+
     def pending(self, task_id: str | None = None) -> list[DecisionRecord]:
         records = [
             r for r in self._records.values()
