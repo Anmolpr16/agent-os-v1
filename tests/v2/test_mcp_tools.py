@@ -165,3 +165,111 @@ def test_mcp_duplicate_registration_is_rejected():
         assert str(exc) == "mcp_tool_already_registered:echo"
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_registered_mcp_tool_enforces_input_schema():
+    from agent_os.integration.mcp import MCPIntegration
+    from agent_os.integration.mcp_tools import MCPToolRegistrar
+    from agent_os.tools.registry import ToolRegistry
+
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "tools": [
+                    {
+                        "name": "lookup",
+                        "description": "Lookup a value",
+                        "inputSchema": {
+                            "type": "object",
+                            "required": ["query"],
+                            "properties": {
+                                "query": {"type": "string"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    }
+                ]
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    registry = ToolRegistry()
+
+    tools = MCPToolRegistrar(
+        integration,
+        registry,
+    ).register()
+
+    assert len(tools) == 1
+
+    result = tools[0].handler(query="hello")
+
+    assert result == {"tools": [
+        {
+            "name": "lookup",
+            "description": "Lookup a value",
+            "inputSchema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string"},
+                },
+                "additionalProperties": False,
+            },
+        }
+    ]}
+    assert len(calls) == 2
+    assert calls[1]["method"] == "tools/call"
+    assert calls[1]["params"]["name"] == "lookup"
+    assert calls[1]["params"]["arguments"] == {"query": "hello"}
+
+
+def test_registered_mcp_tool_rejects_invalid_arguments_before_remote_call():
+    from agent_os.integration.mcp import MCPIntegration
+    from agent_os.integration.mcp_tools import MCPToolRegistrar
+    from agent_os.tools.registry import ToolRegistry
+
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "tools": [
+                    {
+                        "name": "lookup",
+                        "inputSchema": {
+                            "type": "object",
+                            "required": ["query"],
+                            "properties": {
+                                "query": {"type": "string"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    }
+                ]
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    registry = ToolRegistry()
+
+    tool = MCPToolRegistrar(
+        integration,
+        registry,
+    ).register()[0]
+
+    import pytest
+
+    with pytest.raises(ValueError, match="mcp_tool_arguments_invalid"):
+        tool.handler(query=123)
+
+    assert len(calls) == 1
+    assert calls[0]["method"] == "tools/list"

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .mcp import MCPIntegration
+from .mcp_schema import validate_mcp_arguments, MCPSchemaValidationError
 from agent_os.tools.registry import Tool, ToolRegistry
 
 
@@ -128,8 +129,16 @@ class MCPToolRegistrar:
 
             def handler(
                 _tool_name: str = definition.name,
+                _input_schema: dict[str, Any] | None = definition.input_schema,
                 **arguments: Any,
             ) -> Any:
+                try:
+                    validate_mcp_arguments(arguments, _input_schema)
+                except MCPSchemaValidationError as exc:
+                    raise ValueError(
+                        f"mcp_tool_arguments_invalid:{exc}"
+                    ) from exc
+
                 response = self.integration.call_tool(
                     _tool_name,
                     arguments,
