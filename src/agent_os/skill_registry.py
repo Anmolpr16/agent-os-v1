@@ -17,8 +17,12 @@ class SkillVersion:
 
 
 class SkillRegistry:
-    def __init__(self):
+    def __init__(self, repository=None):
         self._skills: dict[str, list[SkillVersion]] = {}
+        self.repository = repository
+
+        if repository is not None:
+            repository.load_registry(self)
 
     def register(
         self,
@@ -44,6 +48,10 @@ class SkillRegistry:
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         history.append(version)
+
+        if self.repository is not None:
+            self.repository.save_version(version)
+
         return version
 
     def latest(self, skill_id: str) -> SkillVersion | None:

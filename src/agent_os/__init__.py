@@ -8,3 +8,4 @@ from .instruction_loader import (
     discover_instructions,
     load_instructions,
 )
+from .skill_repository import SkillRepository, PersistentSkillRegistry

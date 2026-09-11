@@ -94,3 +94,35 @@ CREATE INDEX IF NOT EXISTS idx_governance_decisions_proposal
 
 CREATE INDEX IF NOT EXISTS idx_governance_decisions_timestamp
     ON governance_decisions(timestamp);
+
+CREATE TABLE IF NOT EXISTS skill_versions (
+    skill_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    instructions TEXT NOT NULL,
+    examples_json TEXT NOT NULL DEFAULT '[]',
+    constraints_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (skill_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_versions_skill
+    ON skill_versions(skill_id, version);
+
+CREATE TABLE IF NOT EXISTS skill_evolution_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_id TEXT NOT NULL,
+    base_version INTEGER NOT NULL,
+    resulting_version INTEGER,
+    event_type TEXT NOT NULL,
+    feedback TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_evolution_skill
+    ON skill_evolution_events(skill_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_skill_evolution_base
+    ON skill_evolution_events(skill_id, base_version);
+
