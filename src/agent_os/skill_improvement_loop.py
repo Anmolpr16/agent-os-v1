@@ -29,25 +29,27 @@ class SkillImprovementLoop:
 
     Flow:
 
+        baseline
+          ↓
         execute
           ↓
         evaluate
           ↓
-        normalize feedback
+        feedback
           ↓
-        propose skill revision
+        isolated candidate
           ↓
-        test candidate in an isolated registry
+        execute candidate
           ↓
-        execute again
+        evaluate candidate
           ↓
-        evaluate again
-          ↓
-        promote only if strictly better
+        compare against best score
+          ├── improvement → promote → target reached? → stop
+          └── no improvement → retain best → next candidate
 
-    The production registry is never modified while a candidate is being
-    evaluated. This gives the loop transactional candidate semantics without
-    requiring destructive rollback.
+    Candidate registries are isolated from the production registry.
+    Production history is modified only after a candidate strictly
+    outperforms the current best score.
     """
 
     def __init__(
@@ -112,7 +114,9 @@ class SkillImprovementLoop:
             if isinstance(value, (int, float)):
                 return float(value)
 
-        raise ValueError("evaluation result does not contain a numeric score")
+        raise ValueError(
+            "evaluation result does not contain a numeric score"
+        )
 
     def improve(
         self,
@@ -121,41 +125,59 @@ class SkillImprovementLoop:
         execute: Callable[[SkillVersion], Any],
         evaluate: Callable[[Any], Any],
         reason: str = "evaluation_feedback",
+        target_score: float | None = None,
     ) -> SkillImprovementResult:
         """
-        Run one bounded improvement cycle.
+        Run bounded iterative skill improvement.
 
-        `execute(skill_version)` executes the task using the supplied skill.
-        `evaluate(execution_result)` evaluates that execution and returns an
-        evaluator result accepted by SkillFeedbackBuilder.
+        A candidate is promoted only when its score is strictly greater
+        than the best score seen so far. Rejected candidates never modify
+        the production registry.
 
-        The existing skill is evaluated first. A candidate revision is then
-        created in an isolated registry. The candidate is only promoted to
-        the real registry when its measured score is strictly higher.
+        `target_score`, when supplied, terminates the loop immediately
+        after a promoted candidate reaches that score.
         """
+        if target_score is not None and target_score <= 0:
+            raise ValueError("target_score must be positive")
 
         current = self.registry.latest(skill_id)
-
         if current is None:
             raise ValueError(f"unknown skill: {skill_id}")
 
         baseline_execution = execute(current)
         baseline_evaluation = evaluate(baseline_execution)
+
         baseline_feedback = self.feedback_builder.build(
             skill_id=skill_id,
             result=baseline_evaluation,
         )
-        baseline_score = self._score(baseline_evaluation)
 
-        best_version = current
+        baseline_score = self._score(baseline_evaluation)
         best_score = baseline_score
         last_feedback = baseline_feedback.feedback
         candidate_version: SkillVersion | None = None
         attempts = 0
 
+        if target_score is not None and best_score >= target_score:
+            return SkillImprovementResult(
+                skill_id=skill_id,
+                baseline_version=current.version,
+                candidate_version=current.version,
+                baseline_score=baseline_score,
+                candidate_score=best_score,
+                promoted=False,
+                rejected=False,
+                reason="target_score_already_reached",
+                feedback=last_feedback,
+                attempts=0,
+            )
+
         for attempt in range(1, self.max_attempts + 1):
             attempts = attempt
 
+            # Build and test every candidate in a completely isolated
+            # registry. The production registry remains unchanged until
+            # strict improvement has been demonstrated.
             candidate_registry = self._clone_registry(self.registry)
             candidate_evolution = SkillEvolutionEngine(candidate_registry)
 
@@ -165,6 +187,7 @@ class SkillImprovementLoop:
                 instructions=(
                     f"{current.instructions}\n\n"
                     f"Improvement reason: {reason}\n"
+                    f"Improvement attempt: {attempt}\n"
                     f"Improvement feedback:\n{last_feedback}"
                 ),
                 examples=current.examples,
@@ -181,54 +204,73 @@ class SkillImprovementLoop:
 
             candidate_execution = execute(candidate_version)
             candidate_evaluation = evaluate(candidate_execution)
+
             candidate_feedback = self.feedback_builder.build(
                 skill_id=skill_id,
                 result=candidate_evaluation,
             )
+
             candidate_score = self._score(candidate_evaluation)
             last_feedback = candidate_feedback.feedback
 
-            if candidate_score > best_score:
-                best_version = candidate_version
-                best_score = candidate_score
+            if candidate_score <= best_score:
+                # Do not modify production state. The next attempt gets
+                # another isolated candidate based on the current best.
+                continue
 
-                # Promote the exact candidate content to the production
-                # registry. Registration creates the next immutable version.
-                promoted = self.registry.register(
-                    skill_id=best_version.skill_id,
-                    instructions=best_version.instructions,
-                    examples=best_version.examples,
-                    constraints=best_version.constraints,
-                    metadata={
-                        **best_version.metadata,
-                        "promoted_from_candidate": True,
-                        "candidate_score": candidate_score,
-                        "baseline_score": baseline_score,
-                    },
-                )
+            # Strict improvement: promote this exact candidate into the
+            # production registry as the next immutable version.
+            promoted = self.registry.register(
+                skill_id=candidate_version.skill_id,
+                instructions=candidate_version.instructions,
+                examples=candidate_version.examples,
+                constraints=candidate_version.constraints,
+                metadata={
+                    **candidate_version.metadata,
+                    "promoted_from_candidate": True,
+                    "candidate_score": candidate_score,
+                    "baseline_score": baseline_score,
+                    "previous_best_score": best_score,
+                },
+            )
 
+            best_score = candidate_score
+            candidate_version = promoted
+
+            if target_score is not None and best_score >= target_score:
                 return SkillImprovementResult(
                     skill_id=skill_id,
                     baseline_version=current.version,
                     candidate_version=promoted.version,
                     baseline_score=baseline_score,
-                    candidate_score=candidate_score,
+                    candidate_score=best_score,
                     promoted=True,
                     rejected=False,
-                    reason="candidate_outperformed_baseline",
-                    feedback=candidate_feedback.feedback,
+                    reason="target_score_reached",
+                    feedback=last_feedback,
                     attempts=attempts,
                 )
 
-            # Candidate failed to improve. It remains isolated and is never
-            # inserted into the production registry.
-            break
+            return SkillImprovementResult(
+                skill_id=skill_id,
+                baseline_version=current.version,
+                candidate_version=promoted.version,
+                baseline_score=baseline_score,
+                candidate_score=best_score,
+                promoted=True,
+                rejected=False,
+                reason="candidate_outperformed_baseline",
+                feedback=last_feedback,
+                attempts=attempts,
+            )
 
         return SkillImprovementResult(
             skill_id=skill_id,
             baseline_version=current.version,
             candidate_version=(
-                candidate_version.version if candidate_version is not None else None
+                candidate_version.version
+                if candidate_version is not None
+                else None
             ),
             baseline_score=baseline_score,
             candidate_score=best_score,

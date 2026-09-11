@@ -135,3 +135,122 @@ def test_invalid_attempt_limit_is_rejected():
         pass
     else:
         raise AssertionError("expected max_attempts validation failure")
+
+def test_improvement_loop_uses_multiple_attempts_after_rejection():
+    registry = make_registry()
+    loop = SkillImprovementLoop(registry, max_attempts=3)
+
+    calls = []
+    evaluations = iter([
+        {"score": 0.5, "feedback": "baseline"},
+        {"score": 0.5, "feedback": "candidate one failed"},
+        {"score": 0.8, "feedback": "candidate two improved"},
+    ])
+
+    def execute(skill):
+        calls.append(skill.version)
+        return {"version": skill.version}
+
+    def evaluate(result):
+        return next(evaluations)
+
+    result = loop.improve(
+        skill_id="planner",
+        execute=execute,
+        evaluate=evaluate,
+    )
+
+    assert result.promoted is True
+    assert result.rejected is False
+    assert result.baseline_score == 0.5
+    assert result.candidate_score == 0.8
+    assert result.attempts == 2
+    assert result.candidate_version == 2
+    assert registry.latest("planner").version == 2
+    assert len(registry.history("planner")) == 2
+    assert calls == [1, 2, 2]
+
+
+def test_improvement_loop_stops_at_target_score():
+    registry = make_registry()
+    loop = SkillImprovementLoop(registry, max_attempts=5)
+
+    evaluations = iter([
+        {"score": 0.5, "feedback": "baseline"},
+        {"score": 0.8, "feedback": "good"},
+        {"score": 0.95, "feedback": "target reached"},
+    ])
+
+    executions = []
+
+    def execute(skill):
+        executions.append(skill.version)
+        return {"version": skill.version}
+
+    def evaluate(result):
+        return next(evaluations)
+
+    result = loop.improve(
+        skill_id="planner",
+        execute=execute,
+        evaluate=evaluate,
+        target_score=0.8,
+    )
+
+    assert result.promoted is True
+    assert result.candidate_score == 0.8
+    assert result.attempts == 1
+    assert result.candidate_version == 2
+    assert registry.latest("planner").version == 2
+    assert executions == [1, 2]
+
+
+def test_improvement_loop_exhausts_attempts_without_polluting_registry():
+    registry = make_registry()
+    loop = SkillImprovementLoop(registry, max_attempts=3)
+
+    evaluations = iter([
+        {"score": 0.5, "feedback": "baseline"},
+        {"score": 0.4, "feedback": "candidate one failed"},
+        {"score": 0.45, "feedback": "candidate two failed"},
+        {"score": 0.49, "feedback": "candidate three failed"},
+    ])
+
+    def execute(skill):
+        return {"version": skill.version}
+
+    def evaluate(result):
+        return next(evaluations)
+
+    result = loop.improve(
+        skill_id="planner",
+        execute=execute,
+        evaluate=evaluate,
+    )
+
+    assert result.promoted is False
+    assert result.rejected is True
+    assert result.attempts == 3
+    assert result.baseline_score == 0.5
+    assert result.candidate_score == 0.5
+    assert result.candidate_version == 2
+    assert result.reason == "candidate_did_not_improve"
+    assert registry.latest("planner").version == 1
+    assert len(registry.history("planner")) == 1
+
+
+def test_improvement_loop_rejects_invalid_target_score():
+    registry = make_registry()
+    loop = SkillImprovementLoop(registry)
+
+    try:
+        loop.improve(
+            skill_id="planner",
+            execute=lambda skill: {},
+            evaluate=lambda result: {"score": 0.5},
+            target_score=0.0,
+        )
+    except ValueError as exc:
+        assert str(exc) == "target_score must be positive"
+    else:
+        raise AssertionError("expected target_score validation failure")
