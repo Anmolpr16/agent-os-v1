@@ -113,6 +113,12 @@ class HumanJudgmentApproval:
         self._proposals: dict[str, str] = {}
         self._audited_proposals: set[str] = set()
         self._audited_decisions: set[str] = set()
+
+        if self.repository is not None:
+            self.judgment.add_decision_listener(
+                self.repository.save_decision
+            )
+
         if self.repository is not None:
             self.repository.load_into(self.judgment)
             rows = self.repository.conn.execute(

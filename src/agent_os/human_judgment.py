@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from uuid import uuid4
 
 
@@ -173,6 +173,16 @@ class HumanJudgment:
     def __init__(self):
         self._records: dict[str, DecisionRecord] = {}
         self._history: list[HumanDecision] = []
+        self._decision_listeners: list[Callable[[HumanDecision], None]] = []
+
+    def add_decision_listener(
+        self,
+        listener: Callable[[HumanDecision], None],
+    ) -> None:
+        if not callable(listener):
+            raise TypeError("decision_listener_must_be_callable")
+        if listener not in self._decision_listeners:
+            self._decision_listeners.append(listener)
 
     def propose(
         self,
@@ -267,6 +277,9 @@ class HumanJudgment:
             decision=decision,
         )
         self._history.append(decision)
+
+        for listener in tuple(self._decision_listeners):
+            listener(decision)
 
         return decision
 

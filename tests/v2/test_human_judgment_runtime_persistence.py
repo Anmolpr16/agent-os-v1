@@ -19,8 +19,10 @@ def make_runtime(db, judgment):
     )
 
 
-def test_human_judgment_survives_runtime_restart():
-    with Database() as db:
+def test_human_judgment_survives_runtime_restart(tmp_path):
+    db_path = tmp_path / "governance.db"
+
+    with Database(str(db_path)) as db:
         first_judgment = HumanJudgment()
         first = make_runtime(db, first_judgment)
 
@@ -41,10 +43,18 @@ def test_human_judgment_survives_runtime_restart():
             rationale="Approved after restart-persistence test.",
         )
 
-        # Persist the decision through the repository just as the
-        # integrated approval path will do.
-        first.approval.repository.save_decision(decision)
+        assert decision.status == DecisionStatus.APPROVED
 
+        completed = EndToEndPipeline(first).run(
+            "restart-task",
+            "produce result",
+            ["result"],
+        )
+
+        assert completed.success is True
+        assert completed.approval == ApprovalStatus.APPROVED.value
+
+    with Database(str(db_path)) as db:
         second_judgment = HumanJudgment()
         second = make_runtime(db, second_judgment)
 
