@@ -17,6 +17,7 @@ from .observability import RuntimeMetrics
 from .replanning import Replanner
 from .shared_state import MessageBus, SharedState
 from .skill_evolution import SkillEvolution
+from ..skill_improvement_loop import SkillImprovementLoop
 
 @dataclass(frozen=True)
 class SystemResult:
@@ -42,6 +43,7 @@ class AgentOSRuntime:
         human_judgment=None,
         memory_graph=None,
         skill_registry=None,
+        skill_improvement=None,
     ):
         self.agent = agent
         self.memory = memory
@@ -56,6 +58,13 @@ class AgentOSRuntime:
         self.memory_context = MemoryContextBuilder(self.memory_graph)
         self.skill_registry = skill_registry or SkillRegistry()
         self.skill_context = SkillContextBuilder(self.skill_registry)
+        self.skill_improvement = skill_improvement
+        if self.skill_improvement is not None and not isinstance(
+            self.skill_improvement, SkillImprovementLoop
+        ):
+            raise TypeError(
+                "skill_improvement_must_be_skill_improvement_loop"
+            )
         if approval is not None:
             self.approval = approval
         elif human_judgment is not None:
@@ -108,17 +117,105 @@ class AgentOSRuntime:
         )
         self.audit.record("closed_loop_started", "runtime", task_id)
         self.lifecycle.emit("closed_loop_started", task_id)
+        runtime_metadata = {
+            **self.memory_context.build(objective),
+            **self.skill_context.build(objective),
+        }
+
         result = loop.run(
             AgentContext(
                 task_id=task_id,
                 objective=objective,
-                metadata={
-                    **self.memory_context.build(objective),
-                    **self.skill_context.build(objective),
-                },
+                metadata=runtime_metadata,
             ),
             required_keywords,
         )
+
+        # Skill improvement is opt-in. A genuine task execution failure
+        # may trigger isolated skill learning. Approval outcomes do not.
+        if (
+            self.skill_improvement is not None
+            and not result.success
+            and result.approval is None
+            and result.error is not None
+        ):
+            selected = runtime_metadata.get("skill_context", [])
+
+            if selected:
+                skill_id = selected[0].get("skill_id")
+
+                if skill_id:
+                    def execute_skill(skill_version):
+                        metadata = dict(runtime_metadata)
+                        metadata["skill_context"] = [{
+                            "skill_id": skill_version.skill_id,
+                            "version": skill_version.version,
+                            "instructions": skill_version.instructions,
+                            "examples": list(skill_version.examples),
+                            "constraints": list(skill_version.constraints),
+                            "metadata": dict(skill_version.metadata),
+                            "match_score": selected[0].get("match_score", 0),
+                        }]
+
+                        return self.agent.run(
+                            AgentContext(
+                                task_id=task_id,
+                                objective=objective,
+                                metadata=metadata,
+                            )
+                        ).output
+
+                    def evaluate_skill(output):
+                        return self.evaluation.evaluate(
+                            task_id,
+                            output,
+                            required_keywords,
+                        )
+
+                    try:
+                        improvement = self.skill_improvement.improve(
+                            skill_id=skill_id,
+                            execute=execute_skill,
+                            evaluate=evaluate_skill,
+                            reason=result.error,
+                        )
+
+                        self.audit.record(
+                            "skill_improvement_completed",
+                            "runtime",
+                            task_id,
+                            {
+                                "skill_id": skill_id,
+                                "promoted": improvement.promoted,
+                                "rejected": improvement.rejected,
+                                "attempts": improvement.attempts,
+                                "baseline_score": improvement.baseline_score,
+                                "candidate_score": improvement.candidate_score,
+                            },
+                        )
+
+                        self.lifecycle.emit(
+                            "skill_improvement_completed",
+                            task_id,
+                            {
+                                "skill_id": skill_id,
+                                "promoted": improvement.promoted,
+                                "attempts": improvement.attempts,
+                            },
+                        )
+
+                    except Exception as exc:
+                        # Learning failure must never replace the original
+                        # task failure.
+                        self.audit.record(
+                            "skill_improvement_failed",
+                            "runtime",
+                            task_id,
+                            {
+                                "skill_id": skill_id,
+                                "error": str(exc),
+                            },
+                        )
         self.audit.record(
             "closed_loop_completed" if result.success else "closed_loop_failed",
             "runtime",
