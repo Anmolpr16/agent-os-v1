@@ -85,6 +85,13 @@ class AutomaticApproval:
         )
 
 from agent_os.human_judgment import DecisionStatus, Evidence, HumanJudgment
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent_os.runtime.audit import AuditLog
 
 
 class HumanJudgmentApproval:
@@ -95,42 +102,95 @@ class HumanJudgmentApproval:
         judgment: HumanJudgment,
         *,
         requested_by: str = "agent",
+        audit: "AuditLog | None" = None,
     ):
         self.judgment = judgment
         self.requested_by = requested_by
+        self.audit = audit
         self._proposals: dict[str, str] = {}
+        self._audited_proposals: set[str] = set()
+        self._audited_decisions: set[str] = set()
 
     def proposal_id(self, task_id: str) -> str | None:
         return self._proposals.get(task_id)
 
-    def request(
-        self,
-        request: ApprovalRequest,
-    ) -> ApprovalDecision:
+    def _audit_proposal(self, task_id: str, record) -> None:
+        proposal = record.proposal
+        if self.audit is None or proposal.proposal_id in self._audited_proposals:
+            return
+
+        self.audit.record(
+            "human_judgment_proposed",
+            proposal.requested_by,
+            task_id,
+            {
+                "proposal_id": proposal.proposal_id,
+                "objective": proposal.action,
+            },
+        )
+        self._audited_proposals.add(proposal.proposal_id)
+
+    def _audit_decision(self, task_id: str, record) -> None:
+        if self.audit is None or record.decision is None:
+            return
+
+        decision = record.decision
+        if decision.decision_id in self._audited_decisions:
+            return
+
+        event_name = {
+            DecisionStatus.APPROVED: "human_judgment_approved",
+            DecisionStatus.REJECTED: "human_judgment_rejected",
+            DecisionStatus.REVISION_REQUESTED: (
+                "human_judgment_revision_requested"
+            ),
+        }.get(record.status)
+
+        if event_name is None:
+            return
+
+        self.audit.record(
+            event_name,
+            decision.decided_by,
+            task_id,
+            {
+                "proposal_id": record.proposal.proposal_id,
+                "decision_id": decision.decision_id,
+                "rationale": decision.rationale,
+                "conditions": list(decision.conditions),
+            },
+        )
+        self._audited_decisions.add(decision.decision_id)
+
+    def request(self, request: ApprovalRequest) -> ApprovalDecision:
         proposal_id = self._proposals.get(request.task_id)
 
         if proposal_id is not None:
             record = self.judgment.get(proposal_id)
 
-            # A revision request resolves the old proposal. If a new
-            # proposal has subsequently been submitted for the same task,
-            # bind the runtime approval request to that latest pending one.
-            if (
-                record is not None
-                and record.status == DecisionStatus.REVISION_REQUESTED
-            ):
-                latest = self.judgment.latest(request.task_id)
-                if latest is not None:
-                    proposal_id = latest.proposal.proposal_id
-                    self._proposals[request.task_id] = proposal_id
-                else:
-                    proposal_id = None
+            if record is not None:
+                self._audit_proposal(request.task_id, record)
+
+                if record.status == DecisionStatus.REVISION_REQUESTED:
+                    self._audit_decision(request.task_id, record)
+
+                    latest = self.judgment.latest(request.task_id)
+                    if latest is not None:
+                        proposal_id = latest.proposal.proposal_id
+                        self._proposals[request.task_id] = proposal_id
+                        record = latest
+                        self._audit_proposal(request.task_id, record)
+                    else:
+                        proposal_id = None
 
         if proposal_id is None:
             proposal = self.judgment.propose(
                 task_id=request.task_id,
                 action=request.objective,
-                rationale="Agent produced an evaluated output requiring human judgment.",
+                rationale=(
+                    "Agent produced an evaluated output requiring "
+                    "human judgment."
+                ),
                 evidence=[
                     Evidence(
                         source="runtime",
@@ -150,13 +210,18 @@ class HumanJudgmentApproval:
             proposal_id = proposal.proposal_id
             self._proposals[request.task_id] = proposal_id
 
-        record = self.judgment.get(proposal_id)
+            record = self.judgment.get(proposal_id)
+            if record is not None:
+                self._audit_proposal(request.task_id, record)
 
+        record = self.judgment.get(proposal_id)
         if record is None:
             return ApprovalDecision(
                 status=ApprovalStatus.REJECTED,
                 reason="human_judgment_proposal_missing",
             )
+
+        self._audit_decision(request.task_id, record)
 
         if record.status == DecisionStatus.APPROVED:
             return ApprovalDecision(
@@ -183,8 +248,5 @@ class HumanJudgmentApproval:
             reason="human_approval_required",
         )
 
-    def __call__(
-        self,
-        request: ApprovalRequest,
-    ) -> ApprovalDecision:
+    def __call__(self, request: ApprovalRequest) -> ApprovalDecision:
         return self.request(request)

@@ -60,7 +60,10 @@ class AgentOSRuntime:
             self.approval = approval
         elif human_judgment is not None:
             from agent_os.governance import HumanJudgmentApproval
-            self.approval = HumanJudgmentApproval(human_judgment)
+            self.approval = HumanJudgmentApproval(
+                human_judgment,
+                audit=self.audit,
+            )
         else:
             self.approval = None
         self.human_judgment = human_judgment

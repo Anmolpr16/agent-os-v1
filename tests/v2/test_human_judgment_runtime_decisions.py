@@ -3,6 +3,7 @@ from agent_os.evaluation import EvaluationRunner
 from agent_os.governance import ApprovalStatus
 from agent_os.human_judgment import DecisionStatus, HumanJudgment
 from agent_os.providers import MockProvider
+from agent_os.runtime.audit import AuditLog
 from agent_os.runtime.pipeline import EndToEndPipeline
 from agent_os.runtime.system import AgentOSRuntime
 
@@ -147,3 +148,113 @@ def test_approval_after_revision_request_requires_new_proposal():
     assert len(history) == 2
     assert history[0].status == DecisionStatus.REVISION_REQUESTED
     assert history[1].status == DecisionStatus.APPROVED
+
+
+def test_human_judgment_audit_chain_records_proposal_and_approval():
+    judgment = HumanJudgment()
+    audit = AuditLog()
+
+    runtime = AgentOSRuntime(
+        agent=Agent(MockProvider(response="result completed")),
+        evaluation=EvaluationRunner(),
+        human_judgment=judgment,
+        audit=audit,
+    )
+    pipeline = EndToEndPipeline(runtime)
+
+    pending = pipeline.run(
+        "human-audit-1",
+        "produce result",
+        ["result"],
+    )
+
+    assert pending.success is False
+
+    proposal = judgment.pending("human-audit-1")[0]
+    judgment.approve(
+        proposal_id=proposal.proposal.proposal_id,
+        decided_by="human",
+        rationale="Approved after review.",
+    )
+
+    completed = pipeline.run(
+        "human-audit-1",
+        "produce result",
+        ["result"],
+    )
+
+    assert completed.success is True
+
+    events = audit.for_task("human-audit-1")
+    names = [event.event for event in events]
+
+    assert names.count("human_judgment_proposed") == 1
+    assert names.count("human_judgment_approved") == 1
+    assert "closed_loop_started" in names
+    assert "closed_loop_completed" in names
+
+    proposal_event = next(
+        event for event in events if event.event == "human_judgment_proposed"
+    )
+    approval_event = next(
+        event for event in events if event.event == "human_judgment_approved"
+    )
+
+    assert proposal_event.metadata["proposal_id"] == proposal.proposal.proposal_id
+    assert approval_event.metadata["proposal_id"] == proposal.proposal.proposal_id
+    assert approval_event.metadata["rationale"] == "Approved after review."
+
+
+def test_human_judgment_audit_chain_records_revision_and_revised_proposal():
+    judgment = HumanJudgment()
+    audit = AuditLog()
+
+    runtime = AgentOSRuntime(
+        agent=Agent(MockProvider(response="result completed")),
+        evaluation=EvaluationRunner(),
+        human_judgment=judgment,
+        audit=audit,
+    )
+    pipeline = EndToEndPipeline(runtime)
+
+    pipeline.run(
+        "human-audit-2",
+        "produce result",
+        ["result"],
+    )
+
+    original = judgment.pending("human-audit-2")[0]
+
+    judgment.request_revision(
+        proposal_id=original.proposal.proposal_id,
+        decided_by="human",
+        rationale="Need stronger evidence.",
+    )
+
+    revised = judgment.propose(
+        task_id="human-audit-2",
+        action="produce result with stronger evidence",
+        rationale="Updated after review.",
+    )
+
+    judgment.approve(
+        proposal_id=revised.proposal_id,
+        decided_by="human",
+        rationale="Revised proposal approved.",
+    )
+
+    completed = pipeline.run(
+        "human-audit-2",
+        "produce result",
+        ["result"],
+    )
+
+    assert completed.success is True
+
+    events = audit.for_task("human-audit-2")
+    names = [event.event for event in events]
+
+    assert names.count("human_judgment_proposed") == 2
+    assert names.count("human_judgment_revision_requested") == 1
+    assert names.count("human_judgment_approved") == 1
+    assert "closed_loop_completed" in names
