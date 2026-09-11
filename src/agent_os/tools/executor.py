@@ -5,6 +5,7 @@ from agent_os.core.failures import classify_error
 from agent_os.core.recovery import RetryPolicy, retry
 from typing import Any
 
+from .audit import ToolAuditLog
 from .permissions import PermissionPolicy
 from .registry import ToolRegistry
 
@@ -32,10 +33,12 @@ class ToolExecutor:
         registry: ToolRegistry,
         permissions: PermissionPolicy,
         retry_policy: RetryPolicy | None = None,
+        audit: ToolAuditLog | None = None,
     ):
         self.registry = registry
         self.permissions = permissions
         self.retry_policy = retry_policy or RetryPolicy(max_attempts=1)
+        self.audit = audit
 
     def execute(
         self,
@@ -64,7 +67,7 @@ class ToolExecutor:
                 ),
             )
 
-            return ToolExecutionResult(
+            result = ToolExecutionResult(
                 tool_name=tool_name,
                 success=True,
                 output=output,
@@ -76,9 +79,12 @@ class ToolExecutor:
                     "arguments": sorted(kwargs),
                 },
             )
+            if self.audit is not None:
+                self.audit.record(result)
+            return result
 
         except Exception as exc:
-            return ToolExecutionResult(
+            result = ToolExecutionResult(
                 tool_name=tool_name,
                 success=False,
                 error=f"{type(exc).__name__}: {exc}",
@@ -90,3 +96,6 @@ class ToolExecutor:
                     "arguments": sorted(kwargs),
                 },
             )
+            if self.audit is not None:
+                self.audit.record(result)
+            return result
