@@ -58,3 +58,45 @@ def test_e2e_pipeline_pending_approval_is_not_success():
     )
     assert result.success is False
     assert result.approval == "pending"
+
+def test_e2e_pipeline_inherits_runtime_policy():
+    agent = Agent(MockProvider(response="result completed"))
+    runtime = AgentOSRuntime(
+        agent=agent,
+        approval=ApprovalGate(
+            lambda request: ApprovalDecision(
+                ApprovalStatus.APPROVED,
+                "test_approved",
+            )
+        ),
+        policy=RuntimePolicy(max_output_length=5),
+    )
+
+    pipeline = EndToEndPipeline(runtime)
+
+    assert pipeline.policy is runtime.policy
+
+    try:
+        pipeline.run("policy-1", "produce result", ["result"])
+    except ValueError as exc:
+        assert str(exc) == "output_limit_exceeded"
+    else:
+        raise AssertionError("pipeline_should_enforce_runtime_output_policy")
+
+
+def test_e2e_pipeline_respects_runtime_approval_policy():
+    agent = Agent(MockProvider(response="result completed"))
+    runtime = AgentOSRuntime(
+        agent=agent,
+        policy=RuntimePolicy(require_approval=False),
+    )
+
+    result = EndToEndPipeline(runtime).run(
+        "policy-2",
+        "produce result",
+        ["result"],
+    )
+
+    assert result.success is True
+    assert result.approval == ApprovalStatus.APPROVED.value
+

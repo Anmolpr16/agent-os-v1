@@ -27,7 +27,7 @@ class EndToEndPipeline:
         audit: AuditLog | None = None,
     ):
         self.runtime = runtime
-        self.policy = policy or RuntimePolicy()
+        self.policy = policy if policy is not None else runtime.policy
         self.recovery = recovery or RecoveryController(3)
         self.audit = audit or runtime.audit
 
