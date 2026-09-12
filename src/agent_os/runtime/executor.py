@@ -6,6 +6,7 @@ from .limits import ExecutionLimits
 from .shared_state import MessageBus, SharedState
 from .audit import AuditLog
 from .observability import RuntimeMetrics
+from .policy import RuntimePolicy
 
 @dataclass(frozen=True)
 class GraphExecutionResult:
@@ -23,6 +24,7 @@ class GraphExecutor:
         messages: MessageBus | None = None,
         audit: AuditLog | None = None,
         metrics: RuntimeMetrics | None = None,
+        policy: RuntimePolicy | None = None,
     ):
         self.worker = worker
         self.limits = limits or ExecutionLimits()
@@ -30,6 +32,7 @@ class GraphExecutor:
         self.messages = messages or MessageBus()
         self.audit = audit or AuditLog()
         self.metrics = metrics or RuntimeMetrics()
+        self.policy = policy or RuntimePolicy()
 
     def run(self, graph: TaskGraph) -> GraphExecutionResult:
         tasks = graph.topological_order()
@@ -79,10 +82,13 @@ class GraphExecutor:
                     self.metrics.emit("task_failed", task.task_id)
                     return task.task_id, False, None, str(exc)
 
-            with ThreadPoolExecutor(
-                max_workers=min(self.limits.max_workers, len(batch))
-            ) as executor:
-                results = list(executor.map(execute, batch))
+            if self.policy.allow_parallel and len(batch) > 1:
+                with ThreadPoolExecutor(
+                    max_workers=min(self.limits.max_workers, len(batch))
+                ) as executor:
+                    results = list(executor.map(execute, batch))
+            else:
+                results = [execute(task) for task in batch]
 
             for task_id, success, output, error in results:
                 if success:

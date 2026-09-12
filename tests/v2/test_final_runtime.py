@@ -75,3 +75,52 @@ def test_health():
     result = health()
     assert result.status == "ok"
     assert result.version == "2.0.0"
+
+
+def test_graph_executor_respects_sequential_runtime_policy():
+    from agent_os.runtime import RuntimePolicy
+
+    execution_order = []
+    graph = TaskGraph([
+        TaskNode("a", "A"),
+        TaskNode("b", "B"),
+    ])
+
+    def worker(task):
+        execution_order.append(task.task_id)
+        return f"done:{task.task_id}"
+
+    result = GraphExecutor(
+        worker,
+        ExecutionLimits(max_tasks=10, max_workers=2),
+        policy=RuntimePolicy(allow_parallel=False),
+    ).run(graph)
+
+    assert result.failed == []
+    assert execution_order == ["a", "b"]
+
+
+def test_runtime_passes_policy_to_graph_executor():
+    from agent_os.runtime import AgentOSRuntime, RuntimePolicy
+
+    runtime = AgentOSRuntime(
+        policy=RuntimePolicy(allow_parallel=False),
+        limits=ExecutionLimits(max_tasks=10, max_workers=2),
+    )
+
+    execution_order = []
+
+    def worker(task):
+        execution_order.append(task.task_id)
+        return f"done:{task.task_id}"
+
+    result = runtime.execute_graph(
+        [
+            TaskNode("a", "A"),
+            TaskNode("b", "B"),
+        ],
+        worker,
+    )
+
+    assert result.failed == []
+    assert execution_order == ["a", "b"]

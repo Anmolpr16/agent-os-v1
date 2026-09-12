@@ -7,6 +7,7 @@ from .closed_loop import ClosedLoopRunner, ClosedLoopResult
 from .dag import TaskGraph, TaskNode
 from .executor import GraphExecutionResult, GraphExecutor
 from .limits import ExecutionLimits
+from .policy import RuntimePolicy
 from .lifecycle import RuntimeLifecycle, check_runtime
 from ..memory_graph_store import PersistentMemoryGraph
 from ..memory_context import MemoryContextBuilder
@@ -44,10 +45,12 @@ class AgentOSRuntime:
         memory_graph=None,
         skill_registry=None,
         skill_improvement=None,
+        policy: RuntimePolicy | None = None,
     ):
         self.agent = agent
         self.memory = memory
         self.limits = limits or ExecutionLimits()
+        self.policy = policy or RuntimePolicy()
         self.state = state or SharedState()
         self.messages = messages or MessageBus()
         self.audit = audit or AuditLog()
@@ -91,6 +94,7 @@ class AgentOSRuntime:
             messages=self.messages,
             audit=self.audit,
             metrics=self.metrics,
+            policy=self.policy,
         )
         return executor.run(graph)
 
