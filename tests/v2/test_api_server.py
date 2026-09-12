@@ -181,3 +181,69 @@ def test_metadata_must_be_object():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_post_run_rejects_invalid_content_length():
+    server = start_server()
+    try:
+        connection = HTTPConnection(
+            "127.0.0.1",
+            server.server_port,
+            timeout=5,
+        )
+        connection.request(
+            "POST",
+            "/runs",
+            body=b'{"task_id":"api-004","objective":"test"}',
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": "invalid",
+            },
+        )
+        response = connection.getresponse()
+        body = json.loads(response.read().decode("utf-8"))
+        connection.close()
+
+        assert response.status == 400
+        assert body == {"error": "invalid_content_length"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_post_run_rejects_oversized_body():
+    ApiHandler.orchestrator = None
+    server = create_server(
+        orchestrator_factory=Orchestrator,
+        max_request_body_bytes=16,
+    )
+    thread = threading.Thread(
+        target=server.serve_forever,
+        daemon=True,
+    )
+    thread.start()
+
+    try:
+        status, body = request(
+            server,
+            "POST",
+            "/runs",
+            {
+                "task_id": "api-005",
+                "objective": "this request is deliberately oversized",
+            },
+        )
+        assert status == 400
+        assert body == {"error": "request_body_too_large"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_create_server_rejects_invalid_request_limit():
+    try:
+        create_server(max_request_body_bytes=0)
+    except ValueError as exc:
+        assert str(exc) == "max_request_body_bytes must be positive"
+    else:
+        raise AssertionError("expected ValueError")

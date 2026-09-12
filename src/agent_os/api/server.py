@@ -8,6 +8,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     orchestrator: Any = None
     orchestrator_factory: Any = None
+    max_request_body_bytes: int = 1_048_576
 
     def _send_json(
         self,
@@ -22,11 +23,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_json(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0"))
+        raw_length = self.headers.get("Content-Length")
+        if raw_length is None:
+            raise ValueError("request_body_required")
+
+        try:
+            length = int(raw_length)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid_content_length") from exc
+
         if length <= 0:
             raise ValueError("request_body_required")
 
+        if length > self.max_request_body_bytes:
+            raise ValueError("request_body_too_large")
+
         raw = self.rfile.read(length)
+        if len(raw) != length:
+            raise ValueError("incomplete_request_body")
 
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -133,8 +147,13 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 0,
     orchestrator_factory: Any = None,
+    max_request_body_bytes: int = 1_048_576,
 ) -> ThreadingHTTPServer:
+    if max_request_body_bytes <= 0:
+        raise ValueError("max_request_body_bytes must be positive")
+
     ApiHandler.orchestrator_factory = orchestrator_factory
+    ApiHandler.max_request_body_bytes = max_request_body_bytes
 
     return ThreadingHTTPServer(
         (host, port),
