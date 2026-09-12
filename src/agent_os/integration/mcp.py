@@ -105,22 +105,33 @@ class MCPIntegration:
         if response.get("id") != request_id:
             raise MCPProtocolError("response_id_mismatch")
 
-        if "error" in response:
+        has_error = "error" in response
+        has_result = "result" in response
+
+        if has_error and has_result:
+            raise MCPProtocolError("result_error_conflict")
+
+        if has_error:
             error = response["error"]
 
-            if isinstance(error, dict):
-                message = error.get("message", "unknown_error")
-                code = error.get("code")
-                if code is not None:
-                    raise MCPProtocolError(
-                        f"remote_error:{code}:{message}"
-                        f" | remote_error:{message.lower()}"
-                    )
-                raise MCPProtocolError(f"remote_error:{message}")
+            if not isinstance(error, dict):
+                raise MCPProtocolError("remote_error_invalid")
 
-            raise MCPProtocolError(f"remote_error:{error}")
+            code = error.get("code")
+            message = error.get("message")
 
-        if "result" not in response:
+            if not isinstance(code, int) or isinstance(code, bool):
+                raise MCPProtocolError("remote_error_invalid")
+
+            if not isinstance(message, str):
+                raise MCPProtocolError("remote_error_invalid")
+
+            raise MCPProtocolError(
+                f"remote_error:{code}:{message}"
+                f" | remote_error:{message.lower()}"
+            )
+
+        if not has_result:
             raise MCPProtocolError("missing_result")
 
         return response["result"]
