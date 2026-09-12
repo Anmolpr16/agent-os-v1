@@ -118,6 +118,7 @@ class AgentOSRuntime:
             max_attempts=self.limits.max_tasks
             if self.limits.max_tasks < 100
             else 3,
+            policy=self.policy,
         )
         self.audit.record("closed_loop_started", "runtime", task_id)
         self.lifecycle.emit("closed_loop_started", task_id)

@@ -124,3 +124,64 @@ def test_runtime_passes_policy_to_graph_executor():
 
     assert result.failed == []
     assert execution_order == ["a", "b"]
+
+
+def test_runtime_policy_can_disable_evaluation():
+    from agent_os.runtime import AgentOSRuntime, RuntimePolicy
+
+    class FakeAgent:
+        def run(self, context):
+            return type("Result", (), {"output": "result without evaluation"})()
+
+    class EvaluationMustNotRun:
+        def evaluate(self, *args, **kwargs):
+            raise AssertionError("evaluation_should_be_disabled")
+
+    runtime = AgentOSRuntime(
+        agent=FakeAgent(),
+        evaluation=EvaluationMustNotRun(),
+        policy=RuntimePolicy(
+            require_evaluation=False,
+            require_approval=False,
+        ),
+    )
+
+    result = runtime.execute_closed_loop(
+        "t1",
+        "produce result",
+        [],
+    )
+
+    assert result.success is True
+    assert result.output == "result without evaluation"
+    assert result.approval == ApprovalStatus.APPROVED
+
+
+def test_runtime_policy_can_disable_approval():
+    from agent_os.runtime import AgentOSRuntime, RuntimePolicy
+    from agent_os.evaluation import EvaluationRunner
+
+    class FakeAgent:
+        def run(self, context):
+            return type("Result", (), {"output": "approved by policy"})()
+
+    class ApprovalMustNotRun:
+        def request(self, *args, **kwargs):
+            raise AssertionError("approval_should_be_disabled")
+
+    runtime = AgentOSRuntime(
+        agent=FakeAgent(),
+        evaluation=EvaluationRunner(),
+        approval=ApprovalMustNotRun(),
+        policy=RuntimePolicy(require_approval=False),
+    )
+
+    result = runtime.execute_closed_loop(
+        "t2",
+        "produce approved result",
+        ["approved"],
+    )
+
+    assert result.success is True
+    assert result.output == "approved by policy"
+    assert result.approval == ApprovalStatus.APPROVED

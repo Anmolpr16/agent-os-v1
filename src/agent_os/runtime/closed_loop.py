@@ -6,6 +6,7 @@ from agent_os.evaluation import EvaluationRunner
 from agent_os.governance import ApprovalGate, ApprovalRequest, ApprovalStatus
 from agent_os.runtime.replanning import Replanner
 from agent_os.runtime.shared_state import SharedState
+from agent_os.runtime.policy import RuntimePolicy
 
 @dataclass(frozen=True)
 class LoopAttempt:
@@ -33,6 +34,7 @@ class ClosedLoopRunner:
         approval: ApprovalGate | None = None,
         state: SharedState | None = None,
         max_attempts: int = 3,
+        policy: RuntimePolicy | None = None,
     ):
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
@@ -42,6 +44,7 @@ class ClosedLoopRunner:
         self.approval = approval or ApprovalGate()
         self.state = state or SharedState()
         self.max_attempts = max_attempts
+        self.policy = policy or RuntimePolicy()
 
     def run(
         self,
@@ -61,19 +64,27 @@ class ClosedLoopRunner:
                     )
                 )
 
-                evaluation = self.evaluation.evaluate(
-                    context.task_id,
-                    result.output,
-                    required_keywords,
-                )
-                examination = self.evaluation.examine(evaluation.metrics)
+                if self.policy.require_evaluation:
+                    evaluation = self.evaluation.evaluate(
+                        context.task_id,
+                        result.output,
+                        required_keywords,
+                    )
+                    examination = self.evaluation.examine(evaluation.metrics)
+                    score = examination.score
+                    passed = examination.passed
+                    feedback = list(examination.feedback)
+                else:
+                    score = 1.0
+                    passed = True
+                    feedback = []
 
                 attempt = LoopAttempt(
                     attempt=number,
                     output=result.output,
-                    score=examination.score,
-                    passed=examination.passed,
-                    feedback=list(examination.feedback),
+                    score=score,
+                    passed=passed,
+                    feedback=feedback,
                 )
                 attempts.append(attempt)
 
@@ -81,41 +92,53 @@ class ClosedLoopRunner:
                     f"{context.task_id}:attempt:{number}",
                     {
                         "output": result.output,
-                        "score": examination.score,
-                        "passed": examination.passed,
+                        "score": score,
+                        "passed": passed,
                     },
                 )
 
-                if examination.passed:
-                    decision = self.approval.request(
-                        ApprovalRequest(
-                            task_id=context.task_id,
-                            objective=context.objective,
-                            output=result.output,
+                if passed:
+                    if self.policy.require_approval:
+                        decision = self.approval.request(
+                            ApprovalRequest(
+                                task_id=context.task_id,
+                                objective=context.objective,
+                                output=result.output,
+                            )
                         )
-                    )
-                    if decision.status == ApprovalStatus.APPROVED:
-                        self.state.set(
-                            f"{context.task_id}:final",
-                            result.output,
-                        )
+                        if decision.status == ApprovalStatus.APPROVED:
+                            self.state.set(
+                                f"{context.task_id}:final",
+                                result.output,
+                            )
+                            return ClosedLoopResult(
+                                True,
+                                result.output,
+                                attempts,
+                                decision.status,
+                            )
                         return ClosedLoopResult(
-                            True,
+                            False,
                             result.output,
                             attempts,
                             decision.status,
+                            decision.reason,
                         )
+
+                    self.state.set(
+                        f"{context.task_id}:final",
+                        result.output,
+                    )
                     return ClosedLoopResult(
-                        False,
+                        True,
                         result.output,
                         attempts,
-                        decision.status,
-                        decision.reason,
+                        ApprovalStatus.APPROVED,
                     )
 
                 replan = self.replanner.decide(
                     result.output,
-                    ";".join(examination.feedback),
+                    ";".join(feedback),
                 )
                 if not replan.required:
                     return ClosedLoopResult(
