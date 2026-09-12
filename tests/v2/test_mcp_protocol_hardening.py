@@ -381,3 +381,176 @@ def test_initialize_accepts_matching_protocol_version():
     assert response.success is True
     assert integration.initialized is True
     assert integration.server_info == {"name": "test-server"}
+
+def test_transport_exception_is_returned_as_failed_response():
+    def transport(request):
+        raise ConnectionError("connection lost")
+
+    integration = MCPIntegration(transport)
+    response = integration.list_tools()
+
+    assert response.success is False
+    assert "ConnectionError: connection lost" in response.error
+
+
+def test_transport_failure_does_not_consume_successful_session_state():
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": {
+                    "protocolVersion": "2025-06-18",
+                    "serverInfo": {"name": "stable-server"},
+                    "capabilities": {"tools": {}},
+                },
+            }
+        raise ConnectionError("temporary failure")
+
+    integration = MCPIntegration(transport)
+
+    initialized = integration.initialize(
+        {"protocolVersion": "2025-06-18"}
+    )
+    assert initialized.success is True
+    assert integration.initialized is True
+
+    failed = integration.list_tools()
+    assert failed.success is False
+    assert "ConnectionError: temporary failure" in failed.error
+
+    assert integration.initialized is True
+    assert integration.server_info == {"name": "stable-server"}
+    assert integration.server_capabilities == {"tools": {}}
+
+
+def test_transport_failure_advances_request_id_deterministically():
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise TimeoutError("timed out")
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {"tools": []},
+        }
+
+    integration = MCPIntegration(transport)
+
+    first = integration.list_tools()
+    second = integration.list_tools()
+
+    assert first.success is False
+    assert second.success is True
+    assert [request["id"] for request in calls] == [1, 2]
+
+def test_malformed_response_does_not_destroy_initialized_session():
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": {
+                    "protocolVersion": "2025-06-18",
+                    "serverInfo": {"name": "stable-server"},
+                    "capabilities": {"tools": {}},
+                },
+            }
+        if len(calls) == 2:
+            return "{not-valid-json"
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {"tools": []},
+        }
+
+    integration = MCPIntegration(transport)
+
+    assert integration.initialize(
+        {"protocolVersion": "2025-06-18"}
+    ).success is True
+
+    failed = integration.list_tools()
+    assert failed.success is False
+    assert "invalid_json_response" in failed.error
+
+    assert integration.initialized is True
+    assert integration.server_info == {"name": "stable-server"}
+
+    recovered = integration.list_tools()
+    assert recovered.success is True
+    assert recovered.output == {"tools": []}
+
+
+def test_protocol_corruption_does_not_reuse_previous_response():
+    responses = [
+        {
+            "jsonrpc": "2.0",
+            "id": 999,
+            "result": {"stale": True},
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"fresh": True},
+        },
+    ]
+
+    def transport(request):
+        return responses.pop(0)
+
+    integration = MCPIntegration(transport)
+
+    first = integration.list_tools()
+    second = integration.list_tools()
+
+    assert first.success is False
+    assert "response_id_mismatch" in first.error
+
+    assert second.success is True
+    assert second.output == {"fresh": True}
+
+
+def test_remote_protocol_error_does_not_mark_session_uninitialized():
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "result": {
+                    "protocolVersion": "2025-06-18",
+                    "serverInfo": {"name": "stable-server"},
+                    "capabilities": {"tools": {}},
+                },
+            }
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "error": {
+                "code": -32601,
+                "message": "Method not found",
+            },
+        }
+
+    integration = MCPIntegration(transport)
+
+    assert integration.initialize(
+        {"protocolVersion": "2025-06-18"}
+    ).success is True
+
+    failed = integration.list_tools()
+
+    assert failed.success is False
+    assert "remote_error:-32601:Method not found" in failed.error
+    assert integration.initialized is True

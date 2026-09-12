@@ -113,3 +113,80 @@ def test_unknown_error_is_terminal():
 
     assert failure.kind == FailureKind.TERMINAL
     assert not failure.recoverable
+
+def test_retry_stops_exactly_at_max_attempts():
+    from agent_os.core.recovery import retry
+
+    attempts = []
+
+    def failing_operation():
+        attempts.append(len(attempts) + 1)
+        raise TimeoutError("still unavailable")
+
+    try:
+        retry(
+            failing_operation,
+            RetryPolicy(max_attempts=4),
+            retryable_errors=(TimeoutError,),
+        )
+    except TimeoutError as exc:
+        assert str(exc) == "still unavailable"
+    else:
+        raise AssertionError("retry should propagate the final retryable error")
+
+    assert attempts == [1, 2, 3, 4]
+
+
+def test_retry_does_not_retry_non_retryable_error():
+    from agent_os.core.recovery import retry
+
+    attempts = []
+
+    def failing_operation():
+        attempts.append(1)
+        raise ValueError("terminal failure")
+
+    try:
+        retry(
+            failing_operation,
+            RetryPolicy(max_attempts=5),
+            retryable_errors=(TimeoutError, ConnectionError),
+        )
+    except ValueError as exc:
+        assert str(exc) == "terminal failure"
+    else:
+        raise AssertionError("non-retryable error should propagate")
+
+    assert len(attempts) == 1
+
+
+def test_retry_succeeds_on_final_allowed_attempt():
+    from agent_os.core.recovery import retry
+
+    attempts = []
+
+    def eventually_succeeds():
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 3:
+            raise ConnectionError("temporary")
+        return "recovered"
+
+    result = retry(
+        eventually_succeeds,
+        RetryPolicy(max_attempts=3),
+        retryable_errors=(ConnectionError,),
+    )
+
+    assert result == "recovered"
+    assert attempts == [1, 2, 3]
+
+
+def test_retry_policy_allows_only_positive_attempts_within_budget():
+    policy = RetryPolicy(max_attempts=3)
+
+    assert policy.allows(1) is True
+    assert policy.allows(2) is True
+    assert policy.allows(3) is True
+    assert policy.allows(0) is False
+    assert policy.allows(-1) is False
+    assert policy.allows(4) is False
