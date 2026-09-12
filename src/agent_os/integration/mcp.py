@@ -154,10 +154,12 @@ class MCPIntegration:
             )
 
     def initialize(self, params: dict[str, Any] | None = None) -> IntegrationResponse:
+        initialization_params = dict(params or {})
+
         response = self.execute(
             IntegrationRequest(
                 operation="initialize",
-                payload=dict(params or {}),
+                payload=initialization_params,
             )
         )
 
@@ -175,6 +177,28 @@ class MCPIntegration:
             return IntegrationResponse(
                 success=False,
                 error="MCPProtocolError: initialize_protocol_version_missing",
+            )
+
+        requested_protocol_version = initialization_params.get("protocolVersion")
+        if (
+            requested_protocol_version is not None
+            and (
+                not isinstance(requested_protocol_version, str)
+                or not requested_protocol_version.strip()
+            )
+        ):
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_requested_protocol_version_invalid",
+            )
+
+        if (
+            isinstance(requested_protocol_version, str)
+            and requested_protocol_version != protocol_version
+        ):
+            return IntegrationResponse(
+                success=False,
+                error="MCPProtocolError: initialize_protocol_version_mismatch",
             )
 
         server_info = response.output.get("serverInfo", {})

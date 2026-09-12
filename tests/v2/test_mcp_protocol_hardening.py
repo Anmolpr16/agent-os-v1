@@ -250,3 +250,134 @@ def test_initialize_rejects_non_object_server_capabilities():
     assert response.success is False
     assert "initialize_capabilities_invalid" in response.error
     assert integration.initialized is False
+
+def test_initialize_rejects_empty_protocol_version():
+    def transport(request):
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "   ",
+                "serverInfo": {},
+                "capabilities": {},
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    response = integration.initialize()
+    assert response.success is False
+    assert "initialize_protocol_version_missing" in response.error
+    assert integration.initialized is False
+
+
+def test_initialize_rejects_non_object_server_info():
+    def transport(request):
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "2025-06-18",
+                "serverInfo": "invalid",
+                "capabilities": {},
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    response = integration.initialize()
+    assert response.success is False
+    assert "initialize_server_info_invalid" in response.error
+    assert integration.initialized is False
+
+
+def test_failed_reinitialization_does_not_destroy_existing_session():
+    responses = [
+        {
+            "jsonrpc": "2.0",
+            "result": {
+                "protocolVersion": "2025-06-18",
+                "serverInfo": {"name": "server-a"},
+                "capabilities": {"tools": {}},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "result": {
+                "protocolVersion": 2025,
+                "serverInfo": {},
+                "capabilities": {},
+            },
+        },
+    ]
+
+    def transport(request):
+        response = responses.pop(0)
+        response["id"] = request["id"]
+        return response
+
+    integration = MCPIntegration(transport)
+
+    first = integration.initialize()
+    assert first.success is True
+    assert integration.initialized is True
+    assert integration.server_info == {"name": "server-a"}
+
+    second = integration.initialize()
+    assert second.success is False
+    assert integration.initialized is True
+    assert integration.server_info == {"name": "server-a"}
+    assert integration.server_capabilities == {"tools": {}}
+
+
+def test_initialize_requires_result_object():
+    integration = MCPIntegration(
+        lambda request: {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": [],
+        }
+    )
+
+    response = integration.initialize()
+    assert response.success is False
+    assert "initialize_result_invalid" in response.error
+    assert integration.initialized is False
+
+def test_initialize_rejects_protocol_version_mismatch():
+    def transport(request):
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "2025-11-25",
+                "serverInfo": {},
+                "capabilities": {},
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    response = integration.initialize({"protocolVersion": "2025-06-18"})
+
+    assert response.success is False
+    assert "initialize_protocol_version_mismatch" in response.error
+    assert integration.initialized is False
+
+
+def test_initialize_accepts_matching_protocol_version():
+    def transport(request):
+        assert request["params"]["protocolVersion"] == "2025-06-18"
+        return {
+            "jsonrpc": "2.0",
+            "id": request["id"],
+            "result": {
+                "protocolVersion": "2025-06-18",
+                "serverInfo": {"name": "test-server"},
+                "capabilities": {},
+            },
+        }
+
+    integration = MCPIntegration(transport)
+    response = integration.initialize({"protocolVersion": "2025-06-18"})
+
+    assert response.success is True
+    assert integration.initialized is True
+    assert integration.server_info == {"name": "test-server"}
