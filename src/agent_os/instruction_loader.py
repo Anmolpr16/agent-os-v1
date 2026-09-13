@@ -37,11 +37,20 @@ class InstructionResolver:
             return False
 
     @staticmethod
-    def _repository_root(start: Path) -> Path:
+    def _repository_root(
+        start: Path,
+        filenames: tuple[str, ...] = INSTRUCTION_FILENAMES,
+    ) -> Path:
         current = start if start.is_dir() else start.parent
 
         for candidate in (current, *current.parents):
             if (candidate / ".git").exists():
+                return candidate
+
+        # Source archives and packaged workspaces may not contain .git.
+        # Use the nearest ancestor that declares agent instructions.
+        for candidate in (current, *current.parents):
+            if any((candidate / filename).is_file() for filename in filenames):
                 return candidate
 
         return current
@@ -58,7 +67,7 @@ class InstructionResolver:
         return target
 
     def _scope_root(self, start: Path) -> Path:
-        root = self.root or self._repository_root(start)
+        root = self.root or self._repository_root(start, self.filenames)
 
         if not self._is_within(start, root):
             raise ValueError("instruction_path_outside_root")

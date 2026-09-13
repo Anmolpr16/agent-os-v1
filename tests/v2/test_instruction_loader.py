@@ -120,3 +120,24 @@ def test_instruction_order_is_deterministic(tmp_path):
         "AGENTS.md",
         "CLAUDE.md",
     ]
+
+def test_discovers_instructions_without_git_directory(tmp_path):
+    root = tmp_path / "project"
+    nested = root / "skills" / "research"
+    nested.mkdir(parents=True)
+
+    (root / "AGENTS.md").write_text(
+        "NO-GIT ROOT POLICY",
+        encoding="utf-8",
+    )
+    (nested / "SKILL.md").write_text(
+        "# Research Skill\n",
+        encoding="utf-8",
+    )
+
+    documents = InstructionResolver().discover(nested / "SKILL.md")
+
+    assert [(item.name, item.scope) for item in documents] == [
+        ("AGENTS.md", str(root)),
+    ]
+    assert documents[0].content == "NO-GIT ROOT POLICY"
