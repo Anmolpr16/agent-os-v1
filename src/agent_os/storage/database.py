@@ -1,12 +1,8 @@
 import sqlite3
-from pathlib import Path
+from importlib.resources import files
 
 
-SCHEMA = (
-    Path(__file__).resolve().parents[3]
-    / "memory"
-    / "schema.sql"
-)
+SCHEMA = files("agent_os.data").joinpath("schema.sql")
 
 
 class Database:
