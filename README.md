@@ -1,15 +1,17 @@
-# Agent OS V1
+# Agent OS V2
 
 A provider-neutral control-plane foundation for a persistent AI agent operating system.
 
 ## Purpose
 
-Agent OS V1 provides the execution, cognition, memory, skills, tools, observability,
-recovery, configuration, and evaluation boundaries needed to build a persistent
-AI agent system without coupling the core runtime to a specific model provider.
+Agent OS V2 provides an integrated, provider-neutral control plane for persistent AI
+agents, combining explicit orchestration, persistent memory, versioned skills, bounded
+tool execution, MCP integration, multi-agent coordination, governance, evaluation,
+recovery, observability, and production-oriented resource lifecycle management.
 
-V1 is deliberately a foundation. It does **not** claim to be AGI, autonomous general
-intelligence, or a complete production agent platform.
+V2 is an engineering platform, not a claim of AGI or autonomous general intelligence.
+The system provides explicit boundaries, verification, governance, and evaluation rather
+than assuming that model capability alone guarantees reliable autonomy.
 
 ## Cognitive Lifecycle
 
@@ -26,7 +28,7 @@ Each task follows an explicit lifecycle:
 
 Failures transition the run to `FAILED` and are recorded for observability.
 
-## Implemented V1 Components
+## Implemented V2 Components
 
 - **Core orchestration** — explicit task state and lifecycle execution.
 - **Cognition** — planning, prediction, verification, and reflection primitives.
@@ -71,7 +73,7 @@ src/agent_os/
 evals/               Evaluation datasets
 memory/              SQLite schema
 skills/              Versioned skill definitions
-tests/               V1 test suite
+tests/               V2 test suite
 
 ## Development
 
@@ -90,22 +92,27 @@ Run the complete test suite:
 
 ## Design Principles
 
-Agent OS V1 follows:
+Agent OS V2 follows:
 
-**capability → implementation → evaluation → evidence**
+**capability → implementation → evaluation → evidence → controlled execution**
 
 A capability is considered part of the foundation only when it has an implementation boundary and executable tests supporting its behavior.
 
-## Future Extensions
+## V2 Release-Candidate Scope
 
-The architecture leaves room for:
+The V2 release candidate includes:
 
-- LLM provider adapters
-- vector retrieval
-- knowledge-graph reasoning
-- MCP/tool integrations
-- multi-agent systems
-- automated evaluation and skill improvement
-- richer observability and dashboards
+- persistent memory and provenance-aware retrieval
+- explicit cognitive orchestration and lifecycle state
+- versioned skills and iterative skill improvement
+- scoped agent instructions and workspace boundaries
+- explicit tool registration and permission enforcement
+- MCP protocol integration and stdio transport
+- MCP capability and input-schema enforcement
+- multi-agent coordination and swarm governance
+- human-judgment and approval boundaries
+- evaluation, verification, recovery, and observability
+- production-oriented resource lifecycle hardening
 
-These are future extensions, not claims about the current V1 implementation.
+V2 remains intentionally provider-neutral. Model quality, external services, and deployment
+infrastructure can vary independently of the control-plane architecture.

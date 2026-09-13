@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-os-v1"
-version = "0.1.0"
-description = "V1 foundation for a persistent AI agent operating system"
+version = "2.0.0rc1"
+description = "Provider-neutral control-plane foundation for a persistent AI agent operating system"
 requires-python = ">=3.11"
 dependencies = []
 
