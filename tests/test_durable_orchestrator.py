@@ -38,6 +38,7 @@ def test_orchestrator_persists_lifecycle_events():
 
     assert persisted[0]["task_id"] == task.id
     assert persisted[-1]["state"] == "complete"
+    memory.close()
 
 
 def test_orchestrator_fails_on_tool_failure():
@@ -104,6 +105,7 @@ def test_orchestrator_fails_on_tool_failure():
 
     assert persisted[-1]["state"] == "failed"
     assert persisted[-1]["event"]["error"] == run.error
+    memory.close()
 
 
 def test_orchestrator_persists_selected_skill():

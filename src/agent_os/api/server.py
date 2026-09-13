@@ -76,7 +76,6 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
 
         objective = payload.get("objective")
-
         if not isinstance(objective, str) or not objective.strip():
             self._send_json(
                 400,
@@ -93,12 +92,6 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         try:
             from agent_os.core.orchestrator import Task
-
-            orchestrator = (
-                self.orchestrator_factory()
-                if self.orchestrator_factory is not None
-                else self.orchestrator
-            )
 
             task = Task(
                 id=payload.get("task_id", ""),
@@ -120,13 +113,29 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            owns_orchestrator = self.orchestrator_factory is not None
+            orchestrator = (
+                self.orchestrator_factory()
+                if owns_orchestrator
+                else self.orchestrator
+            )
+
             result = orchestrator.run(task)
+
         except Exception:
             self._send_json(
                 500,
                 {"error": "run_failed"},
             )
             return
+
+        finally:
+            if (
+                self.orchestrator_factory is not None
+                and "orchestrator" in locals()
+                and orchestrator is not None
+            ):
+                orchestrator.close()
 
         self._send_json(
             200,

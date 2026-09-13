@@ -30,6 +30,7 @@ def test_run_repository():
     assert events[0]["task_id"] == "run-001"
     assert events[0]["state"] == "execution"
     assert events[0]["event"]["verified"] is True
+    connection.close()
 
 
 def test_event_logger():
