@@ -152,3 +152,147 @@ for line in sys.stdin:
 
     assert transport.running is False
     assert transport._process is None
+
+def test_response_timeout_invalidates_and_terminates_server():
+    body = r'''
+import sys
+import time
+
+for line in sys.stdin:
+    time.sleep(5)
+'''
+    transport = MCPStdioTransport(
+        MCPStdioConfig(
+            command=server_command(body),
+            timeout=0.1,
+        )
+    )
+
+    with pytest.raises(MCPStdioError, match="stdio_response_timeout"):
+        transport({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "test",
+            "params": {},
+        })
+
+    assert transport.running is False
+    assert transport._process is None
+    transport.close()
+
+
+def test_invalid_json_response_invalidates_server():
+    body = r'''
+import sys
+
+for line in sys.stdin:
+    print("not-json", flush=True)
+'''
+    transport = MCPStdioTransport(
+        MCPStdioConfig(
+            command=server_command(body),
+            timeout=1.0,
+        )
+    )
+
+    with pytest.raises(MCPStdioError, match="stdio_invalid_json_response"):
+        transport({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "test",
+            "params": {},
+        })
+
+    assert transport.running is False
+    assert transport._process is None
+    transport.close()
+
+
+def test_non_object_json_response_invalidates_server():
+    body = r'''
+import sys
+import json
+
+for line in sys.stdin:
+    print(json.dumps(["not", "an", "object"]), flush=True)
+'''
+    transport = MCPStdioTransport(
+        MCPStdioConfig(
+            command=server_command(body),
+            timeout=1.0,
+        )
+    )
+
+    with pytest.raises(MCPStdioError, match="stdio_response_not_object"):
+        transport({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "test",
+            "params": {},
+        })
+
+    assert transport.running is False
+    assert transport._process is None
+    transport.close()
+
+def test_response_size_limit_rejects_oversized_response():
+    body = r'''
+import sys
+
+for line in sys.stdin:
+    print("x" * 200, flush=True)
+'''
+    transport = MCPStdioTransport(
+        MCPStdioConfig(
+            command=server_command(body),
+            timeout=1.0,
+            max_response_bytes=100,
+        )
+    )
+
+    with pytest.raises(MCPStdioError, match="stdio_response_too_large"):
+        transport({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "test",
+            "params": {},
+        })
+
+    assert transport.running is False
+    assert transport._process is None
+    transport.close()
+
+
+def test_response_size_limit_accepts_response_at_boundary():
+    body = r'''
+import sys
+
+for line in sys.stdin:
+    print('{}', flush=True)
+'''
+    transport = MCPStdioTransport(
+        MCPStdioConfig(
+            command=server_command(body),
+            timeout=1.0,
+            max_response_bytes=3,
+        )
+    )
+
+    try:
+        response = transport({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "test",
+            "params": {},
+        })
+        assert response == {}
+    finally:
+        transport.close()
+
+
+def test_response_size_limit_rejects_invalid_limit():
+    with pytest.raises(ValueError, match="stdio_max_response_bytes_invalid"):
+        MCPStdioConfig(
+            command=server_command("import sys"),
+            max_response_bytes=0,
+        )

@@ -20,6 +20,7 @@ class MCPStdioConfig:
     timeout: float = 30.0
     cwd: str | None = None
     env: dict[str, str] | None = None
+    max_response_bytes: int = 1024 * 1024
 
     def __post_init__(self) -> None:
         if not self.command or not self.command[0].strip():
@@ -28,6 +29,8 @@ class MCPStdioConfig:
             raise ValueError("stdio_command_invalid")
         if self.timeout <= 0:
             raise ValueError("stdio_timeout_invalid")
+        if self.max_response_bytes <= 0:
+            raise ValueError("stdio_max_response_bytes_invalid")
         if self.cwd is not None and not os.path.isdir(self.cwd):
             raise ValueError("stdio_cwd_invalid")
         if self.env is not None:
@@ -170,10 +173,25 @@ class MCPStdioTransport:
 
             def read_response() -> None:
                 try:
-                    line = process.stdout.readline()
-                    if not line:
-                        raise MCPStdioError("stdio_server_closed")
-                    response_holder.append(line.rstrip("\r\n"))
+                    chunks: list[str] = []
+                    total_bytes = 0
+                    while True:
+                        chunk = process.stdout.readline(1)
+                        if not chunk:
+                            if not chunks:
+                                raise MCPStdioError("stdio_server_closed")
+                            break
+
+                        chunk_bytes = len(chunk.encode("utf-8"))
+                        total_bytes += chunk_bytes
+                        if total_bytes > self.config.max_response_bytes:
+                            raise MCPStdioError("stdio_response_too_large")
+
+                        chunks.append(chunk)
+                        if chunk.endswith("\n"):
+                            break
+
+                    response_holder.append("".join(chunks).rstrip("\r\n"))
                 except BaseException as exc:
                     error_holder.append(exc)
 
