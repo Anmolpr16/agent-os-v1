@@ -70,6 +70,8 @@ class Orchestrator:
                 "provide either memory or database, not both"
             )
 
+        self._owns_database = memory is None and database is None
+
         if memory is not None:
             self.memory = memory
             self.database = None
@@ -120,6 +122,18 @@ class Orchestrator:
             self.skill_registry
         )
         self.skill_runner = SkillRunner()
+
+    def close(self) -> None:
+        """Close resources owned by this orchestrator."""
+        if self._owns_database and self.database is not None:
+            self.database.close()
+            self.database = None
+
+    def __enter__(self) -> "Orchestrator":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
     def _run_agent_safely(
         self,

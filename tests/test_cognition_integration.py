@@ -2,12 +2,13 @@ from agent_os.core.orchestrator import Orchestrator, Task
 
 
 def test_cognition_integration():
-    run = Orchestrator().run(
-        Task(
+    with Orchestrator() as orchestrator:
+        run = orchestrator.run(
+            Task(
             id="cognition-001",
             objective="Test cognition integration",
+            )
         )
-    )
 
     assert run.prediction_error == 0.0
 
@@ -41,8 +42,9 @@ def test_cognition_integration():
 
 
 def test_lifecycle_event_count():
-    run = Orchestrator().run(
-        Task(
+    with Orchestrator() as orchestrator:
+        run = orchestrator.run(
+            Task(
             id="cognition-002",
             objective="Test event contract",
         )
@@ -52,12 +54,13 @@ def test_lifecycle_event_count():
 
 
 def test_planner_integration():
-    run = Orchestrator().run(
-        Task(
+    with Orchestrator() as orchestrator:
+        run = orchestrator.run(
+            Task(
             id="planner-001",
             objective="Build a verified research workflow",
+            )
         )
-    )
 
     assert run.plan is not None
     assert run.plan.objective == "Build a verified research workflow"

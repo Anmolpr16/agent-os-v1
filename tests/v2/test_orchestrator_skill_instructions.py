@@ -26,10 +26,11 @@ def test_orchestrator_exposes_skill_instructions_to_agent():
     provider = CapturingProvider(response="completed")
     agent = Agent(provider)
 
-    run = Orchestrator(
+    with Orchestrator(
         agent=agent,
         skill_registry=registry,
-    ).run(
+    ) as orchestrator:
+        run = orchestrator.run(
         Task(
             id="instruction-test",
             objective="Research and verify evidence",
@@ -64,10 +65,11 @@ def test_orchestrator_preserves_empty_instruction_context():
 
     provider = CapturingProvider(response="completed")
 
-    Orchestrator(
+    with Orchestrator(
         agent=Agent(provider),
         skill_registry=registry,
-    ).run(
+    ) as orchestrator:
+        orchestrator.run(
         Task(
             id="empty-instruction-test",
             objective="Basic execution task",

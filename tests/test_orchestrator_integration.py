@@ -127,6 +127,7 @@ def test_orchestrator_passes_selected_skill_to_agent():
         "Gather evidence.",
         "Verify evidence.",
     ]
+    orchestrator.close()
 
 
 def test_orchestrator_records_skill_procedure_runtime():
@@ -172,6 +173,7 @@ def test_orchestrator_records_skill_procedure_runtime():
         "acknowledged",
         "acknowledged",
     ]
+    orchestrator.close()
 
 
 def test_orchestrator_uses_runtime_config_for_default_provider():
@@ -199,6 +201,7 @@ def test_orchestrator_uses_runtime_config_for_default_provider():
 
     assert execution_event["provider"] == "configured-provider"
     assert execution_event["model"] == "configured-model"
+    orchestrator.close()
 
 
 def test_orchestrator_uses_configured_memory_path(tmp_path):
@@ -213,14 +216,14 @@ def test_orchestrator_uses_configured_memory_path(tmp_path):
         content="configured persistent memory",
         kind="semantic",
     )
-    first.memory.close()
+    first.close()
 
     second = Orchestrator(config=config)
     matches = second.retriever.search("configured persistent memory")
 
     assert matches
     assert matches[0].content == "configured persistent memory"
-    second.memory.close()
+    second.close()
 
 
 def test_orchestrator_converts_unexpected_agent_error_to_failed_run():

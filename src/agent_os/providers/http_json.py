@@ -53,9 +53,12 @@ class HttpJsonProvider(Provider):
             ) as response:
                 raw = response.read()
         except error.HTTPError as exc:
-            raise ConnectionError(
-                f"http_status:{exc.code}"
-            ) from exc
+            try:
+                exc.close()
+            finally:
+                raise ConnectionError(
+                    f"http_status:{exc.code}"
+                ) from exc
         except error.URLError as exc:
             raise ConnectionError(
                 f"provider_unreachable:{exc.reason}"

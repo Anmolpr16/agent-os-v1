@@ -136,7 +136,29 @@ class MCPStdioTransport:
     ) -> None:
         if self._process is process:
             self._process = None
+
         self._terminate_locked(process)
+
+        if process.stdin is not None:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+
+        stderr_thread = self._stderr_thread
+        self._stderr_thread = None
+        if (
+            stderr_thread is not None
+            and stderr_thread is not threading.current_thread()
+        ):
+            stderr_thread.join(timeout=1.0)
 
     def send(self, request: dict[str, Any]) -> dict[str, Any]:
         """
